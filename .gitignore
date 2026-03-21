@@ -1,0 +1,42 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Workspace tooling
+.windsurf/
+
+# Environment files
+.env
+*.env.local
+
+# Root logs
+*.log
+
+# Go
+*.test
+*.out
+coverage.out
+
+# Local binaries
+/api/api
+/realtime-gateway/realtime-gateway
+
+# API
+/api/.env
+/api/tmp/
+
+# Realtime gateway
+/realtime-gateway/.env
+
+# Frontend
+/admin/node_modules/
+/admin/dist/
+/admin/dist-ssr/
+/admin/coverage/
+/admin/.eslintcache
+/admin/*.tsbuildinfo
+/admin/test-results/
+/admin/playwright-report/

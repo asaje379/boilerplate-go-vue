@@ -1,0 +1,877 @@
+basePath: /
+definitions:
+  file.Visibility:
+    enum:
+      - private
+      - public
+    type: string
+    x-enum-varnames:
+      - VisibilityPrivate
+      - VisibilityPublic
+  handlers.AuthResponse:
+    properties:
+      accessToken:
+        type: string
+      expiresAt:
+        example: "2026-03-16T18:00:00Z"
+        type: string
+      refreshToken:
+        type: string
+      user:
+        $ref: "#/definitions/presenter.UserResponse"
+    type: object
+  handlers.ErrorResponse:
+    properties:
+      error:
+        example: validation error
+        type: string
+    type: object
+  handlers.ForgotPasswordRequest:
+    properties:
+      email:
+        example: jane@example.com
+        type: string
+    required:
+      - email
+    type: object
+  handlers.HealthResponse:
+    properties:
+      services:
+        additionalProperties:
+          $ref: "#/definitions/handlers.ServiceInfo"
+        type: object
+      status:
+        example: ok
+        type: string
+    type: object
+  handlers.LoginChallengeResponse:
+    properties:
+      email:
+        type: string
+      message:
+        type: string
+      otpExpiresAt:
+        type: string
+    type: object
+  handlers.LoginRequest:
+    properties:
+      email:
+        example: jane@example.com
+        type: string
+      password:
+        example: supersecret
+        type: string
+    required:
+      - email
+      - password
+    type: object
+  handlers.RefreshRequest:
+    properties:
+      refreshToken:
+        type: string
+    required:
+      - refreshToken
+    type: object
+  handlers.RegisterRequest:
+    properties:
+      email:
+        example: jane@example.com
+        type: string
+      name:
+        example: Jane Doe
+        type: string
+      password:
+        example: supersecret
+        minLength: 8
+        type: string
+      preferredLocale:
+        enum:
+          - fr
+          - en
+        example: fr
+        type: string
+    required:
+      - email
+      - name
+      - password
+    type: object
+  handlers.ResetPasswordRequest:
+    properties:
+      email:
+        example: jane@example.com
+        type: string
+      newPassword:
+        example: newsecret123
+        minLength: 8
+        type: string
+      otp:
+        example: "123456"
+        type: string
+    required:
+      - email
+      - newPassword
+      - otp
+    type: object
+  handlers.ServiceInfo:
+    properties:
+      message:
+        example: postgres responding
+        type: string
+      status:
+        example: up
+        type: string
+    type: object
+  handlers.UpdateProfilePhotoRequest:
+    properties:
+      fileId:
+        type: string
+    type: object
+  handlers.UploadFileResponse:
+    properties:
+      file:
+        $ref: "#/definitions/presenter.FileResponse"
+    type: object
+  handlers.VerifyLoginOTPRequest:
+    properties:
+      email:
+        example: jane@example.com
+        type: string
+      otp:
+        example: "123456"
+        type: string
+    required:
+      - email
+      - otp
+    type: object
+  presenter.FileResponse:
+    properties:
+      bucket:
+        type: string
+      contentType:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      originalName:
+        type: string
+      provider:
+        enum:
+          - aws
+          - minio
+        example: aws
+        type: string
+      sizeBytes:
+        type: integer
+      storageKey:
+        type: string
+      storedName:
+        type: string
+      updatedAt:
+        type: string
+      uploadedById:
+        type: string
+      visibility:
+        allOf:
+          - $ref: "#/definitions/file.Visibility"
+        enum:
+          - private
+          - public
+        example: private
+    type: object
+  presenter.PaginatedFilesResponse:
+    properties:
+      items:
+        items:
+          $ref: "#/definitions/presenter.FileResponse"
+        type: array
+      meta:
+        $ref: "#/definitions/presenter.PaginationMetaResponse"
+    type: object
+  presenter.PaginatedUsersResponse:
+    properties:
+      items:
+        items:
+          $ref: "#/definitions/presenter.UserResponse"
+        type: array
+      meta:
+        $ref: "#/definitions/presenter.PaginationMetaResponse"
+    type: object
+  presenter.PaginationMetaResponse:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      search:
+        type: string
+      sortBy:
+        type: string
+      sortOrder:
+        type: string
+      total:
+        type: integer
+      totalPages:
+        type: integer
+    type: object
+  presenter.SignedDownloadResponse:
+    properties:
+      file:
+        $ref: "#/definitions/presenter.FileResponse"
+      url:
+        type: string
+    type: object
+  presenter.UserResponse:
+    properties:
+      createdAt:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      mustChangePassword:
+        type: boolean
+      name:
+        type: string
+      preferredLocale:
+        allOf:
+          - $ref: "#/definitions/user.Locale"
+        enum:
+          - fr
+          - en
+        example: fr
+      profilePhotoFileId:
+        type: string
+      profilePhotoUrl:
+        type: string
+      role:
+        allOf:
+          - $ref: "#/definitions/user.Role"
+        enum:
+          - admin
+          - user
+        example: user
+      updatedAt:
+        type: string
+    type: object
+  user.Locale:
+    enum:
+      - fr
+      - en
+    type: string
+    x-enum-varnames:
+      - LocaleFR
+      - LocaleEN
+  user.Role:
+    enum:
+      - admin
+      - user
+    type: string
+    x-enum-varnames:
+      - RoleAdmin
+      - RoleUser
+info:
+  contact: {}
+  description:
+    API server built with Gin, Gorm, Postgres, JWT auth, refresh tokens,
+    and Swaggo.
+  title: Boilerplate Go Vue API
+  version: "1.0"
+paths:
+  /api/v1/auth/forgot-password:
+    post:
+      consumes:
+        - application/json
+      description: Sends a password reset OTP by email if the account exists.
+      parameters:
+        - description: Forgot password payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.ForgotPasswordRequest"
+      produces:
+        - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Forgot password
+      tags:
+        - auth
+  /api/v1/auth/login:
+    post:
+      consumes:
+        - application/json
+      description: Authenticates a user and sends a 2FA OTP by email.
+      parameters:
+        - description: Login payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.LoginRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/handlers.LoginChallengeResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Login
+      tags:
+        - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+        - application/json
+      description: Revokes a refresh token.
+      parameters:
+        - description: Logout payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.RefreshRequest"
+      produces:
+        - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Logout
+      tags:
+        - auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+        - application/json
+      description: Rotates the refresh token and returns a new token pair.
+      parameters:
+        - description: Refresh payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.RefreshRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/handlers.AuthResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Refresh tokens
+      tags:
+        - auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+        - application/json
+      description: Creates a user account. Role defaults to `user`.
+      parameters:
+        - description: Register payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.RegisterRequest"
+      produces:
+        - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: "#/definitions/presenter.UserResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "409":
+          description: Conflict
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Register a user
+      tags:
+        - auth
+  /api/v1/auth/reset-password:
+    post:
+      consumes:
+        - application/json
+      description: Resets the password using the OTP sent by email.
+      parameters:
+        - description: Reset password payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.ResetPasswordRequest"
+      produces:
+        - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Reset password
+      tags:
+        - auth
+  /api/v1/auth/verify-otp:
+    post:
+      consumes:
+        - application/json
+      description: Verifies the login 2FA OTP and returns JWT tokens.
+      parameters:
+        - description: Verify login OTP payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.VerifyLoginOTPRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/handlers.AuthResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Verify email OTP
+      tags:
+        - auth
+  /api/v1/files:
+    get:
+      description: Returns uploaded files. Admin sees all, users see only their files.
+      parameters:
+        - description: Page number
+          in: query
+          name: page
+          type: integer
+        - description: Page size
+          in: query
+          name: limit
+          type: integer
+        - description: Search on name, content type, provider, visibility
+          in: query
+          name: search
+          type: string
+        - description: Sort field
+          enum:
+            - createdAt
+            - updatedAt
+            - name
+            - provider
+            - size
+          in: query
+          name: sortBy
+          type: string
+        - description: Sort order
+          enum:
+            - asc
+            - desc
+          in: query
+          name: sortOrder
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/presenter.PaginatedFilesResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List files
+      tags:
+        - files
+  /api/v1/files/{id}:
+    delete:
+      description: Deletes the object from storage and removes its metadata.
+      parameters:
+        - description: File ID
+          in: path
+          name: id
+          required: true
+          type: string
+      produces:
+        - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "403":
+          description: Forbidden
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "404":
+          description: Not Found
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Delete a file
+      tags:
+        - files
+    get:
+      description: Returns file metadata if the caller is owner or admin.
+      parameters:
+        - description: File ID
+          in: path
+          name: id
+          required: true
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/presenter.FileResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "403":
+          description: Forbidden
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "404":
+          description: Not Found
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get file metadata
+      tags:
+        - files
+  /api/v1/files/{id}/download-signed:
+    get:
+      description: Returns a temporary signed URL for downloading a file.
+      parameters:
+        - description: File ID
+          in: path
+          name: id
+          required: true
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/presenter.SignedDownloadResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "403":
+          description: Forbidden
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "404":
+          description: Not Found
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get signed download URL
+      tags:
+        - files
+  /api/v1/files/public/{id}/download:
+    get:
+      description: Redirects to the public file URL if the file visibility is public.
+      parameters:
+        - description: File ID
+          in: path
+          name: id
+          required: true
+          type: string
+      responses:
+        "302":
+          description: Found
+        "403":
+          description: Forbidden
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "404":
+          description: Not Found
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      summary: Public file download
+      tags:
+        - files
+  /api/v1/files/upload:
+    post:
+      consumes:
+        - multipart/form-data
+      description: Uploads a file to object storage and stores metadata in database.
+      parameters:
+        - description: File binary
+          in: formData
+          name: file
+          required: true
+          type: file
+        - description: Optional storage path prefix inside the configured bucket base path
+          in: formData
+          name: path
+          type: string
+        - description: private or public
+          enum:
+            - private
+            - public
+          in: formData
+          name: visibility
+          type: string
+      produces:
+        - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: "#/definitions/handlers.UploadFileResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Upload a file
+      tags:
+        - files
+  /api/v1/health:
+    get:
+      description: Returns API and Postgres health.
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/handlers.HealthResponse"
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: "#/definitions/handlers.HealthResponse"
+      summary: Health check
+      tags:
+        - health
+  /api/v1/users:
+    get:
+      description: Returns all users. Admin only.
+      parameters:
+        - description: Page number
+          in: query
+          name: page
+          type: integer
+        - description: Page size
+          in: query
+          name: limit
+          type: integer
+        - description: Search on name, email, role
+          in: query
+          name: search
+          type: string
+        - description: Sort field
+          enum:
+            - createdAt
+            - updatedAt
+            - name
+            - email
+            - role
+          in: query
+          name: sortBy
+          type: string
+        - description: Sort order
+          enum:
+            - asc
+            - desc
+          in: query
+          name: sortOrder
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/presenter.PaginatedUsersResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "403":
+          description: Forbidden
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: List users
+      tags:
+        - users
+  /api/v1/users/{id}:
+    get:
+      description: Returns a single user by id. Admin only.
+      parameters:
+        - description: User ID
+          in: path
+          name: id
+          required: true
+          type: string
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/presenter.UserResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "403":
+          description: Forbidden
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "404":
+          description: Not Found
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Get user by ID
+      tags:
+        - users
+  /api/v1/users/me:
+    get:
+      description: Returns the authenticated user profile.
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/presenter.UserResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "404":
+          description: Not Found
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Current user
+      tags:
+        - users
+  /api/v1/users/me/profile-photo:
+    patch:
+      consumes:
+        - application/json
+      description:
+        Assigns or clears the authenticated user's profile photo using
+        an uploaded file id.
+      parameters:
+        - description: Profile photo payload
+          in: body
+          name: payload
+          required: true
+          schema:
+            $ref: "#/definitions/handlers.UpdateProfilePhotoRequest"
+      produces:
+        - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: "#/definitions/presenter.UserResponse"
+        "400":
+          description: Bad Request
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "403":
+          description: Forbidden
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+        "404":
+          description: Not Found
+          schema:
+            $ref: "#/definitions/handlers.ErrorResponse"
+      security:
+        - BearerAuth: []
+      summary: Update current user profile photo
+      tags:
+        - users
+securityDefinitions:
+  BearerAuth:
+    description: Use `Bearer <token>`.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
