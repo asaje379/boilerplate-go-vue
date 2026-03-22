@@ -31,6 +31,10 @@ import { usersApi } from "@/services/api/users.api";
 import { supportedLocales } from "@/lib/i18n";
 import { useRealtimeStore } from "@/stores/realtime";
 
+type UsersTableInstance = {
+  reload: () => Promise<void>;
+};
+
 const { t } = useI18n();
 
 const roleOptions: FormSelectOption[] = [
@@ -47,6 +51,7 @@ const users = ref<User[]>([]);
 const total = ref(0);
 const isDialogOpen = ref(false);
 const editingUser = ref<User | null>(null);
+const usersTableRef = ref<UsersTableInstance | null>(null);
 const realtime = useRealtimeStore();
 const { connectedUsersCount, isConnected: isRealtimeConnected } = storeToRefs(realtime);
 
@@ -172,7 +177,7 @@ async function toggleActive(user: User) {
       await usersApi.reactivate(user.id);
       toast.success(t("users.toast.reactivated"));
     }
-    await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
+    await usersTableRef.value?.reload();
   } catch {
     return;
   }
@@ -183,7 +188,7 @@ async function submitCreate(values: unknown) {
     await usersApi.create(values as Parameters<typeof usersApi.create>[0]);
     toast.success(t("users.toast.created"));
     isDialogOpen.value = false;
-    await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
+    await usersTableRef.value?.reload();
   } catch {
     return;
   }
@@ -198,7 +203,7 @@ async function submitUpdate(values: unknown) {
     await usersApi.update(editingUser.value.id, values as Parameters<typeof usersApi.update>[1]);
     toast.success(t("users.toast.updated"));
     isDialogOpen.value = false;
-    await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
+    await usersTableRef.value?.reload();
   } catch {
     return;
   }
@@ -226,6 +231,7 @@ async function submitUpdate(values: unknown) {
       </CardHeader>
       <CardContent>
         <DataTable
+          ref="usersTableRef"
           :columns="columns"
           :load-data="loadUsers"
           :data="users"

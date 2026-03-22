@@ -125,6 +125,10 @@ const {
 
 const { t } = useI18n();
 
+defineExpose({
+  reload: state.reload,
+});
+
 function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[number]) {
   const current = column.getIsSorted();
 

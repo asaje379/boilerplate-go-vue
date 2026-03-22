@@ -362,6 +362,15 @@ export function useDataTable<TData extends Record<string, any>>(
     }
   }
 
+  async function reload() {
+    if (isServerMode.value) {
+      await loadServerRows();
+      return;
+    }
+
+    errorMessage.value = "";
+  }
+
   function setPage(page: number) {
     pagination.value = {
       ...pagination.value,
@@ -460,6 +469,7 @@ export function useDataTable<TData extends Record<string, any>>(
     moveColumn,
     pageButtons,
     pagination,
+    reload,
     resetFilters,
     rows,
     search,

@@ -284,5 +284,5 @@ onBeforeUnmount(() => {
   <RouterView v-else />
 
   <AppModalHost />
-  <Toaster rich-colors />
+  <Toaster position="top-center" rich-colors />
 </template>
