@@ -5,7 +5,6 @@ import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
 import { useI18n } from "vue-i18n";
-import { getApiErrorMessage } from "@/services/http/error-messages";
 import { AppForm, FormInput, FormPassword, FormSelect, FormSwitch } from "@/components/system";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -80,8 +79,8 @@ async function handleSubmit(values: unknown) {
       values as { email: string; name: string; preferredLocale: "fr" | "en" },
     );
     toast.success(t("profile.info.success"));
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "profile.info.errorDefault"));
+  } catch {
+    return;
   }
 }
 
@@ -89,8 +88,8 @@ async function handlePasswordSubmit(values: unknown) {
   try {
     await session.changePassword(values as { currentPassword: string; newPassword: string });
     toast.success(t("profile.security.success"));
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "profile.security.errorDefault"));
+  } catch {
+    return;
   }
 }
 
@@ -111,8 +110,8 @@ async function handleAvatarChange(event: Event) {
     const uploaded = await filesApi.upload(file, "private", "avatars");
     await session.updateCurrentProfilePhoto(uploaded.file.id);
     toast.success(t("profile.avatar.updated"));
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "profile.avatar.errorUpload"));
+  } catch {
+    return;
   } finally {
     isUploadingAvatar.value = false;
     if (input) {
@@ -127,8 +126,8 @@ async function removeAvatar() {
   try {
     await session.updateCurrentProfilePhoto(null);
     toast.success(t("profile.avatar.removed"));
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "profile.avatar.errorRemove"));
+  } catch {
+    return;
   } finally {
     isRemovingAvatar.value = false;
   }
@@ -143,8 +142,8 @@ async function updateTwoFactor(value: boolean | null) {
     toast.success(
       enabled ? t("profile.security.twoFactorEnabled") : t("profile.security.twoFactorDisabled"),
     );
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "profile.security.twoFactorError"));
+  } catch {
+    return;
   } finally {
     isUpdatingSecurity.value = false;
   }

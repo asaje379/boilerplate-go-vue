@@ -11,15 +11,17 @@ import (
 	appcommon "api/internal/application/common"
 	filedomain "api/internal/domain/file"
 	userdomain "api/internal/domain/user"
+	platformemail "api/internal/platform/email"
 	platformid "api/internal/platform/id"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Service struct {
-	users  userdomain.Repository
-	files  filedomain.Repository
-	events appcommon.EventPublisher
+	users          userdomain.Repository
+	files          filedomain.Repository
+	events         appcommon.EventPublisher
+	emailValidator platformemail.Validator
 }
 
 type ListInput struct {
@@ -64,8 +66,8 @@ type UpdateSecurityInput struct {
 	TwoFactorEnabled bool
 }
 
-func NewService(users userdomain.Repository, files filedomain.Repository, events appcommon.EventPublisher) Service {
-	return Service{users: users, files: files, events: events}
+func NewService(users userdomain.Repository, files filedomain.Repository, events appcommon.EventPublisher, emailValidator platformemail.Validator) Service {
+	return Service{users: users, files: files, events: events, emailValidator: emailValidator}
 }
 
 func normalizeMutableFields(name, email string, preferredLocale userdomain.Locale) (string, string, userdomain.Locale, error) {
@@ -130,6 +132,9 @@ func (s Service) Create(ctx context.Context, input CreateInput) (*userdomain.Use
 
 	if !input.Role.IsValid() {
 		return nil, fmt.Errorf("%w: invalid role", appcommon.ErrValidation)
+	}
+	if err := s.emailValidator.Validate(email); err != nil {
+		return nil, fmt.Errorf("%w: %s", appcommon.ErrValidation, err.Error())
 	}
 
 	existing, err := s.users.GetByEmail(ctx, email)
@@ -196,6 +201,9 @@ func (s Service) Update(ctx context.Context, input UpdateInput) (*userdomain.Use
 	if !input.Role.IsValid() {
 		return nil, fmt.Errorf("%w: invalid role", appcommon.ErrValidation)
 	}
+	if err := s.emailValidator.Validate(email); err != nil {
+		return nil, fmt.Errorf("%w: %s", appcommon.ErrValidation, err.Error())
+	}
 
 	existing, err := s.users.GetByEmail(ctx, email)
 	if err != nil && !errors.Is(err, appcommon.ErrNotFound) {
@@ -241,6 +249,9 @@ func (s Service) UpdateCurrentProfile(ctx context.Context, input UpdateProfileIn
 	name, email, preferredLocale, err := normalizeMutableFields(input.Name, input.Email, input.PreferredLocale)
 	if err != nil {
 		return nil, err
+	}
+	if err := s.emailValidator.Validate(email); err != nil {
+		return nil, fmt.Errorf("%w: %s", appcommon.ErrValidation, err.Error())
 	}
 
 	existing, err := s.users.GetByEmail(ctx, email)

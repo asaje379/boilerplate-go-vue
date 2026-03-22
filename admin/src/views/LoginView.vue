@@ -4,7 +4,6 @@ import { toast } from "vue-sonner";
 import { z } from "zod";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { getApiErrorMessage } from "@/services/http/error-messages";
 import { AppForm, FormInput, FormPassword } from "@/components/system";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,8 +45,8 @@ async function handleSubmit(values: unknown) {
 
     toast.success(t("auth.login.successWelcome"));
     await router.push({ name: "home" });
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "auth.login.errorDefault"));
+  } catch {
+    return;
   }
 }
 </script>

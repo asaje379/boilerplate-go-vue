@@ -151,7 +151,7 @@ func newDependencies(cfg config.Config) (*dependencies, error) {
 		PasswordResetOTPTTL: cfg.PasswordResetOTPTTL,
 		DefaultLocale:       userdomain.Locale(cfg.DefaultLocale),
 	})
-	userService := appuser.NewService(userRepository, fileRepository, eventPublisher)
+	userService := appuser.NewService(userRepository, fileRepository, eventPublisher, emailValidator)
 	fileService := appfile.NewService(fileRepository, storage, cfg.BucketBasePath, cfg.FileSignedURLTTL, cfg.FileMaxSizeBytes, eventPublisher)
 
 	return &dependencies{

@@ -8,7 +8,6 @@ import { useI18n } from "vue-i18n";
 import { provideModal } from "@/composables";
 import { AppLayout, AppModalHost, AppPreferencesMenu, AppUserMenu } from "@/components/system";
 import { setSessionExpiredHandler } from "@/services/http/client";
-import { getApiErrorMessage } from "@/services/http/error-messages";
 import { Toaster } from "@/components/ui/sonner";
 import {
   SidebarGroup,
@@ -126,8 +125,8 @@ async function logout() {
     await session.logout();
     toast.success(t("auth.logout.success"));
     await router.push("/login");
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "auth.logout.errorDefault"));
+  } catch {
+    return;
   }
 }
 

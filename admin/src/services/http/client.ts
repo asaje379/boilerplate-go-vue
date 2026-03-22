@@ -1,12 +1,14 @@
 import { API_BASE_URL, API_TIMEOUT_MS } from "@/config/api";
+import { notifyApiError } from "@/services/http/error-notifier";
 import { clearStoredSession, readStoredSession, writeStoredSession } from "@/services/http/session";
-import { createApiError, createNetworkError } from "@/services/http/errors";
+import { createApiError, createNetworkError, suppressApiErrorToast } from "@/services/http/errors";
 import type { AuthSession } from "@/types/auth";
 
 export interface RequestOptions extends Omit<RequestInit, "body" | "headers"> {
   body?: BodyInit | null | object;
   headers?: HeadersInit;
   skipAuth?: boolean;
+  skipErrorToast?: boolean;
   skipRefresh?: boolean;
   timeoutMs?: number;
 }
@@ -107,7 +109,7 @@ async function refreshSession() {
       .catch((error: unknown) => {
         clearStoredSession();
         onSessionExpired?.();
-        throw error;
+        throw suppressApiErrorToast(error);
       })
       .finally(() => {
         refreshPromise = null;
@@ -147,14 +149,19 @@ export async function apiRequest<TResponse>(
     return payload as TResponse;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw createNetworkError("Request timeout");
+      const timeoutError = createNetworkError("Request timeout");
+      notifyApiError(timeoutError, { skipErrorToast: options.skipErrorToast });
+      throw timeoutError;
     }
 
     if (error instanceof Error) {
+      notifyApiError(error, { skipErrorToast: options.skipErrorToast });
       throw error;
     }
 
-    throw createNetworkError();
+    const networkError = createNetworkError();
+    notifyApiError(networkError, { skipErrorToast: options.skipErrorToast });
+    throw networkError;
   } finally {
     window.clearTimeout(timeout);
   }

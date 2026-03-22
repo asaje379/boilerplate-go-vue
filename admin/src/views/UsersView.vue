@@ -8,7 +8,6 @@ import { storeToRefs } from "pinia";
 import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
-import { getApiErrorMessage } from "@/services/http/error-messages";
 import {
   AppForm,
   DataTable,
@@ -174,8 +173,8 @@ async function toggleActive(user: User) {
       toast.success(t("users.toast.reactivated"));
     }
     await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "users.toast.errorStatus"));
+  } catch {
+    return;
   }
 }
 
@@ -185,8 +184,8 @@ async function submitCreate(values: unknown) {
     toast.success(t("users.toast.created"));
     isDialogOpen.value = false;
     await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "users.toast.errorCreate"));
+  } catch {
+    return;
   }
 }
 
@@ -200,8 +199,8 @@ async function submitUpdate(values: unknown) {
     toast.success(t("users.toast.updated"));
     isDialogOpen.value = false;
     await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
-  } catch (error) {
-    toast.error(getApiErrorMessage(error, "users.toast.errorUpdate"));
+  } catch {
+    return;
   }
 }
 </script>

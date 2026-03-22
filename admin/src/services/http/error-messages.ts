@@ -47,8 +47,10 @@ export function getApiFieldErrors(error: unknown): Record<string, string> | null
   const result: Record<string, string> = {}
 
   for (const [field, messages] of Object.entries(error.details.fields)) {
-    if (Array.isArray(messages) && messages.length > 0) {
-      result[field] = messages[0]
+    const firstMessage = Array.isArray(messages) ? messages[0] : undefined
+
+    if (typeof firstMessage === 'string') {
+      result[field] = firstMessage
     }
   }
 
