@@ -14,7 +14,6 @@ import (
 	platformid "api/internal/platform/id"
 
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type Service struct {
@@ -88,7 +87,7 @@ func normalizeMutableFields(name, email string, preferredLocale userdomain.Local
 func (s Service) GetByID(ctx context.Context, id string) (*userdomain.User, error) {
 	result, err := s.users.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil, appcommon.ErrNotFound
 		}
 		return nil, err
@@ -134,7 +133,7 @@ func (s Service) Create(ctx context.Context, input CreateInput) (*userdomain.Use
 	}
 
 	existing, err := s.users.GetByEmail(ctx, email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !errors.Is(err, appcommon.ErrNotFound) {
 		return nil, err
 	}
 	if existing != nil {
@@ -199,7 +198,7 @@ func (s Service) Update(ctx context.Context, input UpdateInput) (*userdomain.Use
 	}
 
 	existing, err := s.users.GetByEmail(ctx, email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !errors.Is(err, appcommon.ErrNotFound) {
 		return nil, err
 	}
 	if existing != nil && existing.ID != account.ID {
@@ -245,7 +244,7 @@ func (s Service) UpdateCurrentProfile(ctx context.Context, input UpdateProfileIn
 	}
 
 	existing, err := s.users.GetByEmail(ctx, email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !errors.Is(err, appcommon.ErrNotFound) {
 		return nil, err
 	}
 	if existing != nil && existing.ID != account.ID {
@@ -385,7 +384,7 @@ func (s Service) UpdateProfilePhoto(ctx context.Context, userID, actorID string,
 	if fileID != nil {
 		file, err := s.files.GetByID(ctx, *fileID)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, appcommon.ErrNotFound) {
 				return nil, appcommon.ErrNotFound
 			}
 			return nil, err

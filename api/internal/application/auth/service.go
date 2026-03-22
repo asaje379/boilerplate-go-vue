@@ -20,7 +20,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type Service struct {
@@ -107,19 +106,35 @@ type LoginChallengeResult struct {
 	User         *userdomain.User
 }
 
-func NewService(users userdomain.Repository, refreshTokens authdomain.RefreshTokenRepository, otps authdomain.EmailOTPRepository, emailDispatcher EmailDispatcher, emailValidator platformemail.Validator, jwtSecret string, accessTokenTTL, refreshTokenTTL, loginOTPTTL, passwordResetOTPTTL time.Duration, defaultLocale userdomain.Locale) Service {
+const maxPasswordLength = 72
+
+type ServiceConfig struct {
+	Users               userdomain.Repository
+	RefreshTokens       authdomain.RefreshTokenRepository
+	OTPs                authdomain.EmailOTPRepository
+	EmailDispatcher     EmailDispatcher
+	EmailValidator      platformemail.Validator
+	JWTSecret           string
+	AccessTokenTTL      time.Duration
+	RefreshTokenTTL     time.Duration
+	LoginOTPTTL         time.Duration
+	PasswordResetOTPTTL time.Duration
+	DefaultLocale       userdomain.Locale
+}
+
+func NewService(cfg ServiceConfig) Service {
 	return Service{
-		users:               users,
-		refreshTokens:       refreshTokens,
-		otps:                otps,
-		emailDispatcher:     emailDispatcher,
-		emailValidator:      emailValidator,
-		jwtSecret:           []byte(jwtSecret),
-		accessTokenTTL:      accessTokenTTL,
-		refreshTokenTTL:     refreshTokenTTL,
-		loginOTPTTL:         loginOTPTTL,
-		passwordResetOTPTTL: passwordResetOTPTTL,
-		defaultLocale:       defaultLocale.Normalize(),
+		users:               cfg.Users,
+		refreshTokens:       cfg.RefreshTokens,
+		otps:                cfg.OTPs,
+		emailDispatcher:     cfg.EmailDispatcher,
+		emailValidator:      cfg.EmailValidator,
+		jwtSecret:           []byte(cfg.JWTSecret),
+		accessTokenTTL:      cfg.AccessTokenTTL,
+		refreshTokenTTL:     cfg.RefreshTokenTTL,
+		loginOTPTTL:         cfg.LoginOTPTTL,
+		passwordResetOTPTTL: cfg.PasswordResetOTPTTL,
+		defaultLocale:       cfg.DefaultLocale.Normalize(),
 	}
 }
 
@@ -177,6 +192,9 @@ func (s Service) Register(ctx context.Context, input RegisterInput) (*userdomain
 	if len(password) < 8 {
 		return nil, fmt.Errorf("%w: password must be at least 8 characters", appcommon.ErrValidation)
 	}
+	if len(password) > maxPasswordLength {
+		return nil, fmt.Errorf("%w: password must not exceed %d characters", appcommon.ErrValidation, maxPasswordLength)
+	}
 	if !role.IsValid() {
 		return nil, fmt.Errorf("%w: invalid role", appcommon.ErrValidation)
 	}
@@ -185,7 +203,7 @@ func (s Service) Register(ctx context.Context, input RegisterInput) (*userdomain
 	}
 
 	existing, err := s.users.GetByEmail(ctx, email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !errors.Is(err, appcommon.ErrNotFound) {
 		return nil, err
 	}
 	if existing != nil {
@@ -214,7 +232,7 @@ func (s Service) Login(ctx context.Context, input LoginInput) (*LoginChallengeRe
 
 	account, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil, appcommon.ErrUnauthorized
 		}
 		return nil, err
@@ -284,7 +302,7 @@ func (s Service) ForgotPassword(ctx context.Context, input ForgotPasswordInput) 
 
 	account, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil
 		}
 		return err
@@ -303,6 +321,9 @@ func (s Service) ResetPassword(ctx context.Context, input ResetPasswordInput) er
 	}
 	if len(newPassword) < 8 {
 		return fmt.Errorf("%w: password must be at least 8 characters", appcommon.ErrValidation)
+	}
+	if len(newPassword) > maxPasswordLength {
+		return fmt.Errorf("%w: password must not exceed %d characters", appcommon.ErrValidation, maxPasswordLength)
 	}
 
 	account, otp, err := s.verifyOTP(ctx, email, otpCode, authdomain.OTPPurposePasswordReset)
@@ -327,7 +348,7 @@ func (s Service) Refresh(ctx context.Context, input RefreshInput) (*AuthResult, 
 	}
 	storedToken, err := s.refreshTokens.GetByID(ctx, claims.TokenID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil, appcommon.ErrUnauthorized
 		}
 		return nil, err
@@ -337,7 +358,7 @@ func (s Service) Refresh(ctx context.Context, input RefreshInput) (*AuthResult, 
 	}
 	account, err := s.users.GetByID(ctx, storedToken.UserID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil, appcommon.ErrUnauthorized
 		}
 		return nil, err
@@ -355,7 +376,7 @@ func (s Service) Logout(ctx context.Context, input LogoutInput) error {
 	}
 	storedToken, err := s.refreshTokens.GetByID(ctx, claims.TokenID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return appcommon.ErrUnauthorized
 		}
 		return err
@@ -369,7 +390,7 @@ func (s Service) Logout(ctx context.Context, input LogoutInput) error {
 func (s Service) ParseToken(token string) (*TokenClaims, error) { return s.parseToken(token, "access") }
 
 func (s Service) parseToken(token string, expectedType string) (*TokenClaims, error) {
-	parsed, err := jwt.ParseWithClaims(token, &TokenClaims{}, func(_ *jwt.Token) (any, error) { return s.jwtSecret, nil })
+	parsed, err := jwt.ParseWithClaims(token, &TokenClaims{}, func(_ *jwt.Token) (any, error) { return s.jwtSecret, nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		return nil, appcommon.ErrUnauthorized
 	}
@@ -448,7 +469,7 @@ func (s Service) verifyOTP(ctx context.Context, email, code string, purpose auth
 	}
 	otp, err := s.otps.GetLatestActiveByEmailAndPurpose(ctx, email, purpose)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil, nil, appcommon.ErrUnauthorized
 		}
 		return nil, nil, err
@@ -458,7 +479,7 @@ func (s Service) verifyOTP(ctx context.Context, email, code string, purpose auth
 	}
 	account, err := s.users.GetByID(ctx, *otp.UserID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil, nil, appcommon.ErrUnauthorized
 		}
 		return nil, nil, err

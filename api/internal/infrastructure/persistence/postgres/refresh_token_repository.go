@@ -2,9 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	appcommon "api/internal/application/common"
 	authdomain "api/internal/domain/auth"
+
 	"gorm.io/gorm"
 )
 
@@ -29,6 +32,9 @@ func (r RefreshTokenRepository) Create(ctx context.Context, token *authdomain.Re
 func (r RefreshTokenRepository) GetByID(ctx context.Context, id string) (*authdomain.RefreshToken, error) {
 	var model RefreshTokenModel
 	if err := r.db.WithContext(ctx).First(&model, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, appcommon.ErrNotFound
+		}
 		return nil, err
 	}
 

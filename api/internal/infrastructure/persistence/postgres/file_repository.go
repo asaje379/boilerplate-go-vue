@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	appcommon "api/internal/application/common"
 	filedomain "api/internal/domain/file"
+
 	"gorm.io/gorm"
 )
 
@@ -29,6 +31,9 @@ func (r FileRepository) Create(ctx context.Context, file *filedomain.File) error
 func (r FileRepository) GetByID(ctx context.Context, id string) (*filedomain.File, error) {
 	var model FileModel
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, appcommon.ErrNotFound
+		}
 		return nil, err
 	}
 

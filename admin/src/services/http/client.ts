@@ -12,6 +12,11 @@ export interface RequestOptions extends Omit<RequestInit, "body" | "headers"> {
 }
 
 let refreshPromise: Promise<AuthSession> | null = null;
+let onSessionExpired: (() => void) | null = null;
+
+export function setSessionExpiredHandler(handler: () => void) {
+  onSessionExpired = handler;
+}
 
 function buildUrl(path: string) {
   if (path.startsWith("http://") || path.startsWith("https://")) {
@@ -101,6 +106,7 @@ async function refreshSession() {
       })
       .catch((error: unknown) => {
         clearStoredSession();
+        onSessionExpired?.();
         throw error;
       })
       .finally(() => {

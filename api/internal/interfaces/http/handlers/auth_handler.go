@@ -1,11 +1,9 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 
 	appauth "api/internal/application/auth"
-	appcommon "api/internal/application/common"
 	appfile "api/internal/application/file"
 	userdomain "api/internal/domain/user"
 	"api/internal/interfaces/http/presenter"
@@ -375,14 +373,5 @@ func (h AuthHandler) Logout(c *gin.Context) {
 }
 
 func (h AuthHandler) handleError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, appcommon.ErrValidation):
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-	case errors.Is(err, appcommon.ErrConflict):
-		c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
-	case errors.Is(err, appcommon.ErrUnauthorized):
-		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: err.Error()})
-	default:
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
-	}
+	HandleError(c, err)
 }

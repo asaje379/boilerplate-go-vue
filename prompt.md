@@ -1,0 +1,1 @@
+Lis ces quatres pages https://docs.windsurf.com/windsurf/cascade/memories, https://docs.windsurf.com/windsurf/cascade/skills, https://docs.windsurf.com/windsurf/cascade/agents, https://docs.windsurf.com/windsurf/cascade/workflows et donne moi un plan d'implémentation pour utiliser ces fonctionnalités dans le projet actuel

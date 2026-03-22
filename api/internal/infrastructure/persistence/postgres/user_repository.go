@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	appcommon "api/internal/application/common"
 	userdomain "api/internal/domain/user"
@@ -46,6 +47,9 @@ func (r UserRepository) CountAdmins(ctx context.Context) (int64, error) {
 func (r UserRepository) GetByID(ctx context.Context, id string) (*userdomain.User, error) {
 	var model UserModel
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, appcommon.ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -55,6 +59,9 @@ func (r UserRepository) GetByID(ctx context.Context, id string) (*userdomain.Use
 func (r UserRepository) GetByEmail(ctx context.Context, email string) (*userdomain.User, error) {
 	var model UserModel
 	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, appcommon.ErrNotFound
+		}
 		return nil, err
 	}
 

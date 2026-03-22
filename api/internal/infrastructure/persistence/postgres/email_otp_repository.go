@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	appcommon "api/internal/application/common"
 	authdomain "api/internal/domain/auth"
+
 	"gorm.io/gorm"
 )
 
@@ -30,6 +33,9 @@ func (r EmailOTPRepository) GetLatestActiveByEmailAndPurpose(ctx context.Context
 		Where("email = ? AND purpose = ? AND consumed_at IS NULL", email, purpose).
 		Order("created_at DESC").
 		First(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, appcommon.ErrNotFound
+		}
 		return nil, err
 	}
 

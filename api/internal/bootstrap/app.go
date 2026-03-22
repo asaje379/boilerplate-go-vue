@@ -3,6 +3,12 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	appauth "api/internal/application/auth"
 	appcommon "api/internal/application/common"
@@ -132,7 +138,19 @@ func newDependencies(cfg config.Config) (*dependencies, error) {
 		eventPublisher = platformrealtime.NewPublisher(realtimePublisher, cfg.RabbitMQRealtimeExchange)
 	}
 
-	authService := appauth.NewService(userRepository, refreshTokenRepository, emailOTPRepository, emailDispatcher, emailValidator, cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL, cfg.LoginOTPTTL, cfg.PasswordResetOTPTTL, userdomain.Locale(cfg.DefaultLocale))
+	authService := appauth.NewService(appauth.ServiceConfig{
+		Users:               userRepository,
+		RefreshTokens:       refreshTokenRepository,
+		OTPs:                emailOTPRepository,
+		EmailDispatcher:     emailDispatcher,
+		EmailValidator:      emailValidator,
+		JWTSecret:           cfg.JWTSecret,
+		AccessTokenTTL:      cfg.AccessTokenTTL,
+		RefreshTokenTTL:     cfg.RefreshTokenTTL,
+		LoginOTPTTL:         cfg.LoginOTPTTL,
+		PasswordResetOTPTTL: cfg.PasswordResetOTPTTL,
+		DefaultLocale:       userdomain.Locale(cfg.DefaultLocale),
+	})
 	userService := appuser.NewService(userRepository, fileRepository, eventPublisher)
 	fileService := appfile.NewService(fileRepository, storage, cfg.BucketBasePath, cfg.FileSignedURLTTL, cfg.FileMaxSizeBytes, eventPublisher)
 
@@ -148,7 +166,30 @@ func newDependencies(cfg config.Config) (*dependencies, error) {
 }
 
 func (a *Application) Run() error {
-	return a.engine.Run(":" + a.config.Port)
+	srv := &http.Server{
+		Addr:    ":" + a.config.Port,
+		Handler: a.engine,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("server forced to shutdown: %w", err)
+	}
+
+	log.Println("Server exited gracefully")
+	return nil
 }
 
 func (a *Application) runSeeds() error {

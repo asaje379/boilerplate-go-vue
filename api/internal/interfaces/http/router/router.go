@@ -20,6 +20,7 @@ import (
 func New(cfg config.Config, db *gorm.DB, authService appauth.Service, userService appuser.Service, fileService appfile.Service) *gin.Engine {
 	engine := gin.Default()
 	engine.SetTrustedProxies(nil)
+	engine.Use(middleware.RequestID())
 	engine.Use(middleware.SecurityHeaders())
 	engine.Use(middleware.NewCORS(cfg.CORSAllowedOrigins))
 	engine.Use(middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitBurst, 10*time.Minute).Middleware())
@@ -38,7 +39,6 @@ func New(cfg config.Config, db *gorm.DB, authService appauth.Service, userServic
 		{
 			authRoutes.GET("/setup-status", authHandler.SetupStatus)
 			authRoutes.POST("/bootstrap-first-admin", authHandler.BootstrapFirstAdmin)
-			authRoutes.POST("/register", authHandler.Register)
 			authRoutes.POST("/login", authHandler.Login)
 			authRoutes.POST("/verify-otp", authHandler.VerifyLoginOTP)
 			authRoutes.POST("/forgot-password", authHandler.ForgotPassword)

@@ -1,8 +1,22 @@
 import { createRouter, createWebHistory } from "vue-router";
+import type { SetupStatus } from "@/types/auth";
 import { authApi } from "@/services/api/auth.api";
 import { pinia } from "@/pinia";
 import { useSessionStore } from "@/stores/session";
 import HomeView from "../views/HomeView.vue";
+
+let cachedSetupStatus: SetupStatus | null = null;
+
+async function getSetupStatus(): Promise<SetupStatus> {
+  if (!cachedSetupStatus) {
+    cachedSetupStatus = await authApi.setupStatus();
+  }
+  return cachedSetupStatus;
+}
+
+export function invalidateSetupStatus() {
+  cachedSetupStatus = null;
+}
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -13,6 +27,7 @@ const router = createRouter({
       component: () => import("../views/SetupView.vue"),
       meta: {
         public: true,
+        title: "Setup",
       },
     },
     {
@@ -21,6 +36,7 @@ const router = createRouter({
       component: () => import("../views/LoginView.vue"),
       meta: {
         public: true,
+        title: "Login",
       },
     },
     {
@@ -29,6 +45,7 @@ const router = createRouter({
       component: () => import("../views/VerifyOtpView.vue"),
       meta: {
         public: true,
+        title: "Verify OTP",
       },
     },
     {
@@ -37,6 +54,7 @@ const router = createRouter({
       component: () => import("../views/ForcePasswordChangeView.vue"),
       meta: {
         requiresAuth: true,
+        title: "Change Password",
       },
     },
     {
@@ -45,6 +63,7 @@ const router = createRouter({
       component: HomeView,
       meta: {
         requiresAuth: true,
+        title: "Home",
       },
     },
     {
@@ -53,6 +72,7 @@ const router = createRouter({
       component: () => import("../views/AboutView.vue"),
       meta: {
         requiresAuth: true,
+        title: "Structure",
       },
     },
     {
@@ -61,6 +81,7 @@ const router = createRouter({
       component: () => import("../views/UsersView.vue"),
       meta: {
         requiresAuth: true,
+        title: "Users",
       },
     },
     {
@@ -69,6 +90,7 @@ const router = createRouter({
       component: () => import("../views/ProfileView.vue"),
       meta: {
         requiresAuth: true,
+        title: "Profile",
       },
     },
     {
@@ -76,6 +98,7 @@ const router = createRouter({
       component: () => import("../views/PlaygroundView.vue"),
       meta: {
         requiresAuth: true,
+        title: "Playground",
       },
       children: [
         {
@@ -117,7 +140,7 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const session = useSessionStore(pinia);
 
-  const setupStatus = await authApi.setupStatus();
+  const setupStatus = await getSetupStatus();
 
   if (setupStatus.requiresSetup && to.name !== "setup") {
     return { name: "setup" };
@@ -158,6 +181,13 @@ router.beforeEach(async (to) => {
   }
 
   return true;
+});
+
+const APP_TITLE = "Admin Blueprint";
+
+router.afterEach((to) => {
+  const pageTitle = to.meta.title as string | undefined;
+  document.title = pageTitle ? `${pageTitle} | ${APP_TITLE}` : APP_TITLE;
 });
 
 export default router;

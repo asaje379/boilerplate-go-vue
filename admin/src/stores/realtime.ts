@@ -65,8 +65,6 @@ export const useRealtimeStore = defineStore("realtime", () => {
     const nextTransport = options.transport || transport.value;
     const nextChannels = normalizeChannels(options.channels ?? activeChannels.value);
 
-    console.log("connextion");
-
     if (!session.accessToken) {
       disconnect({ clearChannels: false });
       lastError.value = "Missing access token for realtime connection.";
@@ -169,7 +167,6 @@ export const useRealtimeStore = defineStore("realtime", () => {
     };
 
     source.onmessage = (message) => {
-      console.log({ message });
       dispatchRawMessage(message.data);
     };
 
