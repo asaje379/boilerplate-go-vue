@@ -1,8 +1,8 @@
 <script setup lang="ts" generic="TData extends Record<string, unknown>">
-import type { HTMLAttributes } from 'vue'
-import type { ColumnDef } from '@tanstack/vue-table'
-import { computed, toRef } from 'vue'
-import { FlexRender } from '@tanstack/vue-table'
+import type { HTMLAttributes } from "vue";
+import type { ColumnDef } from "@tanstack/vue-table";
+import { computed, toRef } from "vue";
+import { FlexRender } from "@tanstack/vue-table";
 import {
   ArrowDown,
   ArrowUp,
@@ -12,21 +12,21 @@ import {
   ChevronRight,
   Columns3,
   Inbox,
-} from 'lucide-vue-next'
-import { Button } from '@/components/ui/button'
+} from "lucide-vue-next";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -35,58 +35,59 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { cn } from '@/lib/utils'
-import { useDataTable } from '@/composables/use-data-table'
-import SearchInput from './SearchInput.vue'
+} from "@/components/ui/table";
+import { useI18n } from "vue-i18n";
+import { cn } from "@/lib/utils";
+import { useDataTable } from "@/composables/use-data-table";
+import SearchInput from "./SearchInput.vue";
 import type {
   DataTableFilterValues,
   DataTableLoadParams,
   DataTableLoadResult,
-} from '@/types/data-table'
+} from "@/types/data-table";
 
 const props = withDefaults(
   defineProps<{
-    applyFilters?: (rows: TData[], filters: DataTableFilterValues) => TData[]
-    class?: HTMLAttributes['class']
-    columns: ColumnDef<TData, unknown>[]
-    data?: TData[]
-    emptyDescription?: string
-    emptyTitle?: string
-    filterValues?: DataTableFilterValues
-    initialPageSize?: number
-    loadData?: (params: DataTableLoadParams) => Promise<DataTableLoadResult<TData>>
-    pageSizeOptions?: number[]
-    queryKeyPrefix?: string
-    rowId?: (row: TData, index: number) => string
-    searchKeys?: string[]
-    searchPlaceholder?: string
-    storageKey: string
-    syncUrl?: boolean
+    applyFilters?: (rows: TData[], filters: DataTableFilterValues) => TData[];
+    class?: HTMLAttributes["class"];
+    columns: ColumnDef<TData, unknown>[];
+    data?: TData[];
+    emptyDescription?: string;
+    emptyTitle?: string;
+    filterValues?: DataTableFilterValues;
+    initialPageSize?: number;
+    loadData?: (params: DataTableLoadParams) => Promise<DataTableLoadResult<TData>>;
+    pageSizeOptions?: number[];
+    queryKeyPrefix?: string;
+    rowId?: (row: TData, index: number) => string;
+    searchKeys?: string[];
+    searchPlaceholder?: string;
+    storageKey: string;
+    syncUrl?: boolean;
   }>(),
   {
     data: () => [],
-    emptyDescription: 'Adjust your search or filters, or create a new record.',
-    emptyTitle: 'No results',
+    emptyDescription: undefined,
+    emptyTitle: undefined,
     filterValues: () => ({}),
     initialPageSize: 10,
     pageSizeOptions: () => [10, 20, 50, 100],
     queryKeyPrefix: undefined,
     rowId: undefined,
     searchKeys: () => [],
-    searchPlaceholder: 'Search...',
+    searchPlaceholder: undefined,
     syncUrl: true,
   },
-)
+);
 
 const emit = defineEmits<{
-  'update:filterValues': [payload: DataTableFilterValues]
-}>()
+  "update:filterValues": [payload: DataTableFilterValues];
+}>();
 
 const filterValuesModel = computed({
   get: () => props.filterValues,
-  set: (value) => emit('update:filterValues', value),
-})
+  set: (value) => emit("update:filterValues", value),
+});
 
 const state = useDataTable<TData>({
   applyFilters: props.applyFilters,
@@ -100,7 +101,7 @@ const state = useDataTable<TData>({
   searchKeys: props.searchKeys,
   storageKey: props.storageKey,
   syncUrl: props.syncUrl,
-})
+});
 
 const {
   errorMessage,
@@ -120,20 +121,22 @@ const {
   totalPages,
   totalRows,
   visibleColumns,
-} = state
+} = state;
+
+const { t } = useI18n();
 
 function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[number]) {
-  const current = column.getIsSorted()
+  const current = column.getIsSorted();
 
-  if (current === 'asc') {
-    return ArrowUp
+  if (current === "asc") {
+    return ArrowUp;
   }
 
-  if (current === 'desc') {
-    return ArrowDown
+  if (current === "desc") {
+    return ArrowDown;
   }
 
-  return ArrowUpDown
+  return ArrowUpDown;
 }
 </script>
 
@@ -168,14 +171,16 @@ function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[numbe
           <DropdownMenuTrigger as-child>
             <Button type="button" variant="outline">
               <Columns3 class="size-4" />
-              Columns
+              {{ t("common.dataTable.columns") }}
               <ChevronDown class="size-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" class="w-72 p-2">
             <div class="mb-2 px-2">
-              <p class="text-sm font-medium">Columns</p>
-              <p class="text-muted-foreground text-xs">Toggle visibility and reorder columns.</p>
+              <p class="text-sm font-medium">{{ t("common.dataTable.columns") }}</p>
+              <p class="text-muted-foreground text-xs">
+                {{ t("common.dataTable.columnsDescription") }}
+              </p>
             </div>
 
             <div class="space-y-1">
@@ -278,9 +283,11 @@ function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[numbe
                   <Inbox class="size-5" />
                 </div>
                 <div>
-                  <p class="font-medium">{{ errorMessage || emptyTitle }}</p>
+                  <p class="font-medium">
+                    {{ errorMessage || emptyTitle || t("common.dataTable.emptyTitle") }}
+                  </p>
                   <p class="text-muted-foreground text-sm">
-                    {{ errorMessage || emptyDescription }}
+                    {{ errorMessage || emptyDescription || t("common.dataTable.emptyDescription") }}
                   </p>
                 </div>
               </div>
@@ -294,13 +301,16 @@ function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[numbe
       class="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/80 p-4 lg:flex-row lg:items-center lg:justify-between"
     >
       <div class="text-muted-foreground text-sm">
-        Showing <span class="text-foreground font-medium">{{ rows.length }}</span> of
-        <span class="text-foreground font-medium">{{ totalRows }}</span> results
+        {{ t("common.dataTable.showing") }}
+        <span class="text-foreground font-medium">{{ rows.length }}</span>
+        {{ t("common.dataTable.of") }}
+        <span class="text-foreground font-medium">{{ totalRows }}</span>
+        {{ t("common.dataTable.results") }}
       </div>
 
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div class="flex items-center gap-2 text-sm">
-          <span class="text-muted-foreground">Rows per page</span>
+          <span class="text-muted-foreground">{{ t("common.dataTable.rowsPerPage") }}</span>
           <Select :model-value="String(pagination.pageSize)" @update:model-value="setPageSize">
             <SelectTrigger class="w-[90px]">
               <SelectValue />
@@ -322,7 +332,7 @@ function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[numbe
             @click="setPage(1)"
           >
             <ChevronLeft class="size-4" />
-            <span class="sr-only">First page</span>
+            <span class="sr-only">{{ t("common.dataTable.firstPage") }}</span>
           </Button>
           <Button
             type="button"
@@ -332,7 +342,7 @@ function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[numbe
             @click="setPage(pagination.pageIndex)"
           >
             <ArrowUp class="size-4 rotate-[-90deg]" />
-            <span class="sr-only">Previous page</span>
+            <span class="sr-only">{{ t("common.dataTable.previousPage") }}</span>
           </Button>
           <Button
             v-for="page in pageButtons"
@@ -353,7 +363,7 @@ function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[numbe
             @click="setPage(pagination.pageIndex + 2)"
           >
             <ArrowUp class="size-4 rotate-90" />
-            <span class="sr-only">Next page</span>
+            <span class="sr-only">{{ t("common.dataTable.nextPage") }}</span>
           </Button>
           <Button
             type="button"
@@ -363,7 +373,7 @@ function sortIcon(column: ReturnType<typeof state.table.getAllLeafColumns>[numbe
             @click="setPage(totalPages)"
           >
             <ChevronRight class="size-4" />
-            <span class="sr-only">Last page</span>
+            <span class="sr-only">{{ t("common.dataTable.lastPage") }}</span>
           </Button>
         </div>
       </div>

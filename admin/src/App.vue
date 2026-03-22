@@ -1,18 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { ChevronRight, CircleHelp, PanelsTopLeft, ShieldCheck, UserRound } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import { provideModal } from "@/composables";
-import {
-  AppLayout,
-  AppModalHost,
-  AppNotificationsMenu,
-  AppPreferencesMenu,
-  AppUserMenu,
-} from "@/components/system";
+import { AppLayout, AppModalHost, AppPreferencesMenu, AppUserMenu } from "@/components/system";
+import { setSessionExpiredHandler } from "@/services/http/client";
+import { getApiErrorMessage } from "@/services/http/error-messages";
 import { Toaster } from "@/components/ui/sonner";
 import {
   SidebarGroup,
@@ -36,6 +32,14 @@ const router = useRouter();
 
 provideModal();
 
+onMounted(() => {
+  setSessionExpiredHandler(() => {
+    session.$reset();
+    toast.error(t("auth.sessionExpired"));
+    router.push({ name: "login" });
+  });
+});
+
 const preferences = usePreferencesStore();
 const { locale, resolvedTheme, themePreference } = storeToRefs(preferences);
 const session = useSessionStore();
@@ -45,8 +49,8 @@ const { connectedUsersCount, isConnected: isRealtimeConnected } = storeToRefs(re
 
 const navigation = computed(() => [
   { icon: PanelsTopLeft, label: t("nav.home"), to: "/" },
-  { icon: UserRound, label: "Users", to: "/users" },
-  { icon: ShieldCheck, label: "Profile", to: "/profile" },
+  { icon: UserRound, label: t("users.title"), to: "/users" },
+  { icon: ShieldCheck, label: t("profile.info.title"), to: "/profile" },
   {
     children: [
       { label: "FormPlayground", to: "/playground/form" },
@@ -72,30 +76,6 @@ const themeLabels = computed<Record<ThemePreference, string>>(() => ({
 }));
 
 const isPlaygroundOpen = ref(route.path.startsWith("/playground"));
-
-const notifications = [
-  {
-    description: "A new version of the admin layout is ready for review.",
-    id: "notification-1",
-    time: "2 min",
-    title: "Layout updated",
-    unread: true,
-  },
-  {
-    description: "Three playground components have been updated successfully.",
-    id: "notification-2",
-    time: "1 h",
-    title: "System sync completed",
-    unread: true,
-  },
-  {
-    description: "Your weekly activity report is available in the dashboard.",
-    id: "notification-3",
-    time: "Yesterday",
-    title: "Weekly report",
-    unread: false,
-  },
-] as const;
 
 const isAuthRoute = computed(
   () => route.name === "setup" || route.name === "login" || route.name === "verify-otp",
@@ -144,10 +124,10 @@ function openProfile() {
 async function logout() {
   try {
     await session.logout();
-    toast.success("Signed out successfully.");
+    toast.success(t("auth.logout.success"));
     await router.push("/login");
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to logout");
+    toast.error(getApiErrorMessage(error, "auth.logout.errorDefault"));
   }
 }
 
@@ -271,8 +251,6 @@ onBeforeUnmount(() => {
             />
           </div>
 
-          <AppNotificationsMenu :notifications="notifications" />
-
           <AppUserMenu
             compact
             :avatar-url="currentUserDisplay.avatarUrl"
@@ -291,12 +269,12 @@ onBeforeUnmount(() => {
     <template #footer>
       <div class="flex items-center justify-between gap-4 text-xs text-muted-foreground">
         <div class="flex items-center gap-4">
-          <span
-            >{{ notifications.filter((notification) => notification.unread).length }} active
-            notifications</span
-          >
           <span>
-            {{ isRealtimeConnected ? `${connectedUsersCount ?? 0} users connected` : "Realtime offline" }}
+            {{
+              isRealtimeConnected
+                ? `${connectedUsersCount ?? 0} users connected`
+                : "Realtime offline"
+            }}
           </span>
         </div>
         <span>Copyright {{ new Date().getFullYear() }}</span>

@@ -2,12 +2,15 @@
 import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { getApiErrorMessage } from "@/services/http/error-messages";
 import { AppForm, FormPassword } from "@/components/system";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSessionStore } from "@/stores/session";
 
+const { t } = useI18n();
 const router = useRouter();
 const session = useSessionStore();
 
@@ -20,16 +23,16 @@ const initialValues = {
 const validationSchema = toTypedSchema(
   z
     .object({
-      confirmPassword: z.string().min(8, "Minimum 8 characters"),
-      currentPassword: z.string().min(1, "Current password is required"),
-      newPassword: z.string().min(8, "Minimum 8 characters"),
+      confirmPassword: z.string().min(8, t("auth.validation.min8")),
+      currentPassword: z.string().min(1, t("auth.validation.currentPasswordRequired")),
+      newPassword: z.string().min(8, t("auth.validation.min8")),
     })
     .refine((values) => values.currentPassword !== values.newPassword, {
-      message: "New password must be different from current password",
+      message: t("auth.validation.passwordsMustDiffer"),
       path: ["newPassword"],
     })
     .refine((values) => values.newPassword === values.confirmPassword, {
-      message: "Passwords do not match",
+      message: t("auth.validation.passwordsMustMatch"),
       path: ["confirmPassword"],
     }),
 );
@@ -37,10 +40,10 @@ const validationSchema = toTypedSchema(
 async function handleSubmit(values: unknown) {
   try {
     await session.changePassword(values as { currentPassword: string; newPassword: string });
-    toast.success("Password updated.");
+    toast.success(t("auth.forcePasswordChange.success"));
     await router.replace({ name: "home" });
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to update password");
+    toast.error(getApiErrorMessage(error, "auth.forcePasswordChange.errorDefault"));
   }
 }
 </script>
@@ -49,9 +52,9 @@ async function handleSubmit(values: unknown) {
   <div class="flex min-h-screen items-center justify-center bg-background px-4 py-10">
     <Card class="w-full max-w-lg border-border/60 bg-card/95">
       <CardHeader class="space-y-2">
-        <CardTitle class="text-2xl">Change your password</CardTitle>
+        <CardTitle class="text-2xl">{{ $t("auth.forcePasswordChange.title") }}</CardTitle>
         <CardDescription>
-          For security reasons, you must update your password before accessing the application.
+          {{ $t("auth.forcePasswordChange.description") }}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -64,21 +67,28 @@ async function handleSubmit(values: unknown) {
             <div class="space-y-4">
               <FormPassword
                 name="currentPassword"
-                label="Current password"
-                placeholder="Enter your current password"
+                :label="$t('auth.forcePasswordChange.currentPasswordLabel')"
+                :placeholder="$t('auth.forcePasswordChange.currentPasswordPlaceholder')"
+                autocomplete="current-password"
               />
               <FormPassword
                 name="newPassword"
-                label="New password"
-                placeholder="Enter your new password"
+                :label="$t('auth.forcePasswordChange.newPasswordLabel')"
+                :placeholder="$t('auth.forcePasswordChange.newPasswordPlaceholder')"
+                autocomplete="new-password"
               />
               <FormPassword
                 name="confirmPassword"
-                label="Confirm new password"
-                placeholder="Repeat your new password"
+                :label="$t('auth.forcePasswordChange.confirmPasswordLabel')"
+                :placeholder="$t('auth.forcePasswordChange.confirmPasswordPlaceholder')"
+                autocomplete="new-password"
               />
               <Button type="submit" class="w-full" :disabled="isSubmitting">
-                {{ isSubmitting ? "Updating…" : "Change password and continue" }}
+                {{
+                  isSubmitting
+                    ? $t("auth.forcePasswordChange.submitting")
+                    : $t("auth.forcePasswordChange.submit")
+                }}
               </Button>
             </div>
           </template>

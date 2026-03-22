@@ -3,10 +3,12 @@ import type { ColumnDef } from "@tanstack/vue-table";
 import type { FormSelectOption } from "@/types";
 import type { User } from "@/types/user";
 import { h, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { storeToRefs } from "pinia";
 import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
+import { getApiErrorMessage } from "@/services/http/error-messages";
 import {
   AppForm,
   DataTable,
@@ -30,9 +32,11 @@ import { usersApi } from "@/services/api/users.api";
 import { supportedLocales } from "@/lib/i18n";
 import { useRealtimeStore } from "@/stores/realtime";
 
+const { t } = useI18n();
+
 const roleOptions: FormSelectOption[] = [
-  { label: "Admin", value: "admin" },
-  { label: "User", value: "user" },
+  { label: t("users.roles.admin"), value: "admin" },
+  { label: t("users.roles.user"), value: "user" },
 ];
 
 const localeOptions: FormSelectOption[] = supportedLocales.map((locale) => ({
@@ -49,10 +53,10 @@ const { connectedUsersCount, isConnected: isRealtimeConnected } = storeToRefs(re
 
 const createSchema = toTypedSchema(
   z.object({
-    email: z.string().email("Email is invalid"),
+    email: z.string().email(t("auth.validation.emailInvalid")),
     mustChangePassword: z.boolean().optional().default(true),
-    name: z.string().min(2, "Name is required"),
-    password: z.string().min(8, "Minimum 8 characters"),
+    name: z.string().min(2, t("auth.validation.nameRequired")),
+    password: z.string().min(8, t("auth.validation.min8")),
     preferredLocale: z.enum(["fr", "en"]),
     role: z.enum(["admin", "user"]),
   }),
@@ -60,8 +64,8 @@ const createSchema = toTypedSchema(
 
 const updateSchema = toTypedSchema(
   z.object({
-    email: z.string().email("Email is invalid"),
-    name: z.string().min(2, "Name is required"),
+    email: z.string().email(t("auth.validation.emailInvalid")),
+    name: z.string().min(2, t("auth.validation.nameRequired")),
     preferredLocale: z.enum(["fr", "en"]),
     role: z.enum(["admin", "user"]),
   }),
@@ -70,28 +74,28 @@ const updateSchema = toTypedSchema(
 const columns: ColumnDef<User>[] = [
   {
     accessorKey: "name",
-    header: "Name",
+    header: t("users.columns.name"),
   },
   {
     accessorKey: "email",
-    header: "Email",
+    header: t("users.columns.email"),
   },
   {
     accessorKey: "role",
-    header: "Role",
+    header: t("users.columns.role"),
     cell: ({ row }) => h(Badge, { variant: "secondary" }, () => row.original.role),
   },
   {
     accessorKey: "isActive",
-    header: "Status",
+    header: t("users.columns.status"),
     cell: ({ row }) =>
       h(Badge, { variant: row.original.isActive ? "default" : "outline" }, () =>
-        row.original.isActive ? "Active" : "Inactive",
+        row.original.isActive ? t("users.status.active") : t("users.status.inactive"),
       ),
   },
   {
     id: "actions",
-    header: "Actions",
+    header: t("users.columns.actions"),
     cell: ({ row }) =>
       h("div", { class: "flex items-center gap-2" }, [
         h(
@@ -101,7 +105,7 @@ const columns: ColumnDef<User>[] = [
             variant: "outline",
             onClick: () => openEditDialog(row.original),
           },
-          () => "Edit",
+          () => t("users.actions.edit"),
         ),
         h(
           Button,
@@ -110,7 +114,8 @@ const columns: ColumnDef<User>[] = [
             variant: row.original.isActive ? "destructive" : "outline",
             onClick: () => toggleActive(row.original),
           },
-          () => (row.original.isActive ? "Disable" : "Reactivate"),
+          () =>
+            row.original.isActive ? t("users.actions.disable") : t("users.actions.reactivate"),
         ),
       ]),
   },
@@ -156,32 +161,32 @@ async function handleUserSubmit(values: unknown) {
 
 function handleInvalidSubmit(payload: unknown) {
   console.error("UsersView create/update form invalid submit", payload);
-  toast.error("Form validation blocked submission. Check the browser console.");
+  toast.error(t("users.toast.validationError"));
 }
 
 async function toggleActive(user: User) {
   try {
     if (user.isActive) {
       await usersApi.deactivate(user.id);
-      toast.success("User disabled.");
+      toast.success(t("users.toast.disabled"));
     } else {
       await usersApi.reactivate(user.id);
-      toast.success("User reactivated.");
+      toast.success(t("users.toast.reactivated"));
     }
     await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to update user status");
+    toast.error(getApiErrorMessage(error, "users.toast.errorStatus"));
   }
 }
 
 async function submitCreate(values: unknown) {
   try {
     await usersApi.create(values as Parameters<typeof usersApi.create>[0]);
-    toast.success("User created.");
+    toast.success(t("users.toast.created"));
     isDialogOpen.value = false;
     await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to create user");
+    toast.error(getApiErrorMessage(error, "users.toast.errorCreate"));
   }
 }
 
@@ -192,11 +197,11 @@ async function submitUpdate(values: unknown) {
 
   try {
     await usersApi.update(editingUser.value.id, values as Parameters<typeof usersApi.update>[1]);
-    toast.success("User updated.");
+    toast.success(t("users.toast.updated"));
     isDialogOpen.value = false;
     await loadUsers({ filters: {}, page: 1, pageSize: 10, search: "", sorting: [] });
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to update user");
+    toast.error(getApiErrorMessage(error, "users.toast.errorUpdate"));
   }
 }
 </script>
@@ -207,14 +212,18 @@ async function submitUpdate(values: unknown) {
       <CardHeader class="flex flex-row items-center justify-between gap-4">
         <div>
           <CardTitle class="flex items-center gap-2">
-            <span>Users</span>
+            <span>{{ $t("users.title") }}</span>
             <Badge variant="outline">
-              {{ isRealtimeConnected ? `${connectedUsersCount ?? 0} connected now` : "Realtime offline" }}
+              {{
+                isRealtimeConnected
+                  ? $t("users.connectedNow", { count: connectedUsersCount ?? 0 })
+                  : $t("users.realtimeOffline")
+              }}
             </Badge>
           </CardTitle>
-          <CardDescription>Manage application users, roles, and activation state.</CardDescription>
+          <CardDescription>{{ $t("users.description") }}</CardDescription>
         </div>
-        <Button @click="openCreateDialog">Create user</Button>
+        <Button @click="openCreateDialog">{{ $t("users.createUser") }}</Button>
       </CardHeader>
       <CardContent>
         <DataTable
@@ -222,7 +231,7 @@ async function submitUpdate(values: unknown) {
           :load-data="loadUsers"
           :data="users"
           storage-key="users-management"
-          search-placeholder="Search users..."
+          :search-placeholder="$t('users.searchPlaceholder')"
         />
       </CardContent>
     </Card>
@@ -230,9 +239,15 @@ async function submitUpdate(values: unknown) {
     <Dialog :open="isDialogOpen" @update:open="(value) => (isDialogOpen = value)">
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{{ editingUser ? "Edit user" : "Create user" }}</DialogTitle>
+          <DialogTitle>{{
+            editingUser ? $t("users.dialog.editTitle") : $t("users.dialog.createTitle")
+          }}</DialogTitle>
           <DialogDescription>
-            {{ editingUser ? "Update the user profile and role." : "Create a new user account." }}
+            {{
+              editingUser
+                ? $t("users.dialog.editDescription")
+                : $t("users.dialog.createDescription")
+            }}
           </DialogDescription>
         </DialogHeader>
 
@@ -260,34 +275,48 @@ async function submitUpdate(values: unknown) {
         >
           <template #default="{ isSubmitting }">
             <div class="space-y-4">
-              <FormInput name="name" label="Name" placeholder="Jane Doe" />
-              <FormInput name="email" label="Email" placeholder="jane@example.com" />
+              <FormInput
+                name="name"
+                :label="$t('users.form.nameLabel')"
+                :placeholder="$t('users.form.namePlaceholder')"
+              />
+              <FormInput
+                name="email"
+                :label="$t('users.form.emailLabel')"
+                :placeholder="$t('users.form.emailPlaceholder')"
+              />
               <FormPassword
                 v-if="!editingUser"
                 name="password"
-                label="Password"
-                placeholder="At least 8 characters"
+                :label="$t('users.form.passwordLabel')"
+                :placeholder="$t('users.form.passwordPlaceholder')"
               />
               <FormCheckbox
                 v-if="!editingUser"
                 name="mustChangePassword"
-                label="Require password change on first login"
-                description="The user will be redirected to update their password after signing in."
+                :label="$t('users.form.mustChangePassword')"
+                :description="$t('users.form.mustChangePasswordDescription')"
               />
               <FormSelect
                 name="preferredLocale"
-                label="Preferred locale"
+                :label="$t('users.form.localeLabel')"
                 :options="localeOptions"
-                placeholder="Select a locale"
+                :placeholder="$t('users.form.localePlaceholder')"
               />
               <FormSelect
                 name="role"
-                label="Role"
+                :label="$t('users.form.roleLabel')"
                 :options="roleOptions"
-                placeholder="Select a role"
+                :placeholder="$t('users.form.rolePlaceholder')"
               />
               <Button type="submit" class="w-full" :disabled="isSubmitting">
-                {{ isSubmitting ? "Saving…" : editingUser ? "Save changes" : "Create user" }}
+                {{
+                  isSubmitting
+                    ? $t("users.form.submitting")
+                    : editingUser
+                      ? $t("users.form.submitSave")
+                      : $t("users.form.submitCreate")
+                }}
               </Button>
             </div>
           </template>

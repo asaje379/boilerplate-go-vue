@@ -2,19 +2,22 @@
 import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { getApiErrorMessage } from "@/services/http/error-messages";
 import { AppForm, FormInput, FormPassword } from "@/components/system";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSessionStore } from "@/stores/session";
 
+const { t } = useI18n();
 const router = useRouter();
 const session = useSessionStore();
 
 const validationSchema = toTypedSchema(
   z.object({
-    email: z.string().email("Email is invalid"),
-    password: z.string().min(1, "Password is required"),
+    email: z.string().email(t("auth.validation.emailInvalid")),
+    password: z.string().min(1, t("auth.validation.passwordRequired")),
   }),
 );
 
@@ -26,29 +29,25 @@ const initialValues = {
 async function handleSubmit(values: unknown) {
   const payload = values as { email: string; password: string };
 
-  const wait = () => new Promise((resolve) => setTimeout(resolve, 2000));
-
-  await wait();
-
   try {
     const result = await session.login(payload);
 
     if (result.requiresOtp) {
-      toast.success("OTP sent to your email address.");
+      toast.success(t("auth.login.successOtp"));
       await router.push({ name: "verify-otp" });
       return;
     }
 
     if (session.requiresPasswordChange) {
-      toast.success("Signed in. Please change your password to continue.");
+      toast.success(t("auth.login.successPasswordChange"));
       await router.push({ name: "force-password-change" });
       return;
     }
 
-    toast.success("Welcome back.");
+    toast.success(t("auth.login.successWelcome"));
     await router.push({ name: "home" });
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to login");
+    toast.error(getApiErrorMessage(error, "auth.login.errorDefault"));
   }
 }
 </script>
@@ -57,8 +56,8 @@ async function handleSubmit(values: unknown) {
   <div class="flex min-h-screen items-center justify-center bg-background px-4 py-10">
     <Card class="w-full max-w-md border-border/60 bg-card/95">
       <CardHeader class="space-y-2">
-        <CardTitle class="text-2xl">Sign in</CardTitle>
-        <CardDescription>Use your email and password to sign in to your account.</CardDescription>
+        <CardTitle class="text-2xl">{{ $t("auth.login.title") }}</CardTitle>
+        <CardDescription>{{ $t("auth.login.description") }}</CardDescription>
       </CardHeader>
       <CardContent>
         <AppForm
@@ -68,10 +67,20 @@ async function handleSubmit(values: unknown) {
         >
           <template #default="{ isSubmitting }">
             <div class="space-y-4">
-              <FormInput name="email" label="Email" placeholder="you@example.com" />
-              <FormPassword name="password" label="Password" placeholder="Enter your password" />
+              <FormInput
+                name="email"
+                :label="$t('auth.login.emailLabel')"
+                :placeholder="$t('auth.login.emailPlaceholder')"
+                autocomplete="email"
+              />
+              <FormPassword
+                name="password"
+                :label="$t('auth.login.passwordLabel')"
+                :placeholder="$t('auth.login.passwordPlaceholder')"
+                autocomplete="current-password"
+              />
               <Button type="submit" class="w-full" :disabled="isSubmitting">
-                {{ isSubmitting ? "Signing in…" : "Continue" }}
+                {{ isSubmitting ? $t("auth.login.submitting") : $t("auth.login.submit") }}
               </Button>
             </div>
           </template>

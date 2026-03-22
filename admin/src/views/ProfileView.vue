@@ -4,6 +4,8 @@ import { storeToRefs } from "pinia";
 import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
+import { useI18n } from "vue-i18n";
+import { getApiErrorMessage } from "@/services/http/error-messages";
 import { AppForm, FormInput, FormPassword, FormSelect, FormSwitch } from "@/components/system";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -12,6 +14,7 @@ import { supportedLocales } from "@/lib/i18n";
 import { filesApi } from "@/services/api/files.api";
 import { useSessionStore } from "@/stores/session";
 
+const { t } = useI18n();
 const session = useSessionStore();
 const { currentUser } = storeToRefs(session);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
@@ -48,8 +51,8 @@ const passwordInitialValues = {
 
 const validationSchema = toTypedSchema(
   z.object({
-    email: z.string().email("Email is invalid"),
-    name: z.string().min(2, "Name is required"),
+    email: z.string().email(t("auth.validation.emailInvalid")),
+    name: z.string().min(2, t("auth.validation.nameRequired")),
     preferredLocale: z.enum(["fr", "en"]),
   }),
 );
@@ -57,16 +60,16 @@ const validationSchema = toTypedSchema(
 const passwordValidationSchema = toTypedSchema(
   z
     .object({
-      confirmPassword: z.string().min(8, "Minimum 8 characters"),
-      currentPassword: z.string().min(1, "Current password is required"),
-      newPassword: z.string().min(8, "Minimum 8 characters"),
+      confirmPassword: z.string().min(8, t("auth.validation.min8")),
+      currentPassword: z.string().min(1, t("auth.validation.currentPasswordRequired")),
+      newPassword: z.string().min(8, t("auth.validation.min8")),
     })
     .refine((values) => values.currentPassword !== values.newPassword, {
-      message: "New password must be different from current password",
+      message: t("auth.validation.passwordsMustDiffer"),
       path: ["newPassword"],
     })
     .refine((values) => values.newPassword === values.confirmPassword, {
-      message: "Passwords do not match",
+      message: t("auth.validation.passwordsMustMatch"),
       path: ["confirmPassword"],
     }),
 );
@@ -76,18 +79,18 @@ async function handleSubmit(values: unknown) {
     await session.updateCurrentProfile(
       values as { email: string; name: string; preferredLocale: "fr" | "en" },
     );
-    toast.success("Profile updated.");
+    toast.success(t("profile.info.success"));
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to update profile");
+    toast.error(getApiErrorMessage(error, "profile.info.errorDefault"));
   }
 }
 
 async function handlePasswordSubmit(values: unknown) {
   try {
     await session.changePassword(values as { currentPassword: string; newPassword: string });
-    toast.success("Password updated.");
+    toast.success(t("profile.security.success"));
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to update password");
+    toast.error(getApiErrorMessage(error, "profile.security.errorDefault"));
   }
 }
 
@@ -107,9 +110,9 @@ async function handleAvatarChange(event: Event) {
   try {
     const uploaded = await filesApi.upload(file, "private", "avatars");
     await session.updateCurrentProfilePhoto(uploaded.file.id);
-    toast.success("Avatar updated.");
+    toast.success(t("profile.avatar.updated"));
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to update avatar");
+    toast.error(getApiErrorMessage(error, "profile.avatar.errorUpload"));
   } finally {
     isUploadingAvatar.value = false;
     if (input) {
@@ -123,9 +126,9 @@ async function removeAvatar() {
 
   try {
     await session.updateCurrentProfilePhoto(null);
-    toast.success("Avatar removed.");
+    toast.success(t("profile.avatar.removed"));
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to remove avatar");
+    toast.error(getApiErrorMessage(error, "profile.avatar.errorRemove"));
   } finally {
     isRemovingAvatar.value = false;
   }
@@ -138,10 +141,10 @@ async function updateTwoFactor(value: boolean | null) {
     const enabled = value === true;
     await session.updateSecurity({ twoFactorEnabled: enabled });
     toast.success(
-      enabled ? "Two-factor authentication enabled." : "Two-factor authentication disabled.",
+      enabled ? t("profile.security.twoFactorEnabled") : t("profile.security.twoFactorDisabled"),
     );
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : "Unable to update security settings");
+    toast.error(getApiErrorMessage(error, "profile.security.twoFactorError"));
   } finally {
     isUpdatingSecurity.value = false;
   }
@@ -152,8 +155,8 @@ async function updateTwoFactor(value: boolean | null) {
   <section class="space-y-6">
     <Card class="max-w-3xl border-border/60 bg-card/90">
       <CardHeader>
-        <CardTitle>Avatar</CardTitle>
-        <CardDescription>Upload a profile picture or remove the current one.</CardDescription>
+        <CardTitle>{{ $t("profile.avatar.title") }}</CardTitle>
+        <CardDescription>{{ $t("profile.avatar.description") }}</CardDescription>
       </CardHeader>
       <CardContent class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-4">
@@ -185,7 +188,7 @@ async function updateTwoFactor(value: boolean | null) {
             :disabled="isUploadingAvatar"
             @click="openAvatarPicker"
           >
-            {{ isUploadingAvatar ? "Uploading…" : "Change avatar" }}
+            {{ isUploadingAvatar ? $t("profile.avatar.changing") : $t("profile.avatar.change") }}
           </Button>
           <Button
             v-if="currentUser?.profilePhotoFileId"
@@ -194,7 +197,7 @@ async function updateTwoFactor(value: boolean | null) {
             :disabled="isRemovingAvatar"
             @click="removeAvatar"
           >
-            {{ isRemovingAvatar ? "Removing…" : "Remove avatar" }}
+            {{ isRemovingAvatar ? $t("profile.avatar.removing") : $t("profile.avatar.remove") }}
           </Button>
         </div>
       </CardContent>
@@ -202,8 +205,8 @@ async function updateTwoFactor(value: boolean | null) {
 
     <Card class="max-w-3xl border-border/60 bg-card/90">
       <CardHeader>
-        <CardTitle>Profile</CardTitle>
-        <CardDescription>Update your personal information and preferred locale.</CardDescription>
+        <CardTitle>{{ $t("profile.info.title") }}</CardTitle>
+        <CardDescription>{{ $t("profile.info.description") }}</CardDescription>
       </CardHeader>
       <CardContent>
         <AppForm
@@ -213,16 +216,24 @@ async function updateTwoFactor(value: boolean | null) {
         >
           <template #default="{ isSubmitting }">
             <div class="space-y-4">
-              <FormInput name="name" label="Name" placeholder="Your full name" />
-              <FormInput name="email" label="Email" placeholder="you@example.com" />
+              <FormInput
+                name="name"
+                :label="$t('profile.info.nameLabel')"
+                :placeholder="$t('profile.info.namePlaceholder')"
+              />
+              <FormInput
+                name="email"
+                :label="$t('profile.info.emailLabel')"
+                :placeholder="$t('profile.info.emailPlaceholder')"
+              />
               <FormSelect
                 name="preferredLocale"
-                label="Preferred locale"
+                :label="$t('profile.info.localeLabel')"
                 :options="localeOptions"
-                placeholder="Select a locale"
+                :placeholder="$t('profile.info.localePlaceholder')"
               />
               <Button type="submit" :disabled="isSubmitting">
-                {{ isSubmitting ? "Saving…" : "Save profile" }}
+                {{ isSubmitting ? $t("profile.info.submitting") : $t("profile.info.submit") }}
               </Button>
             </div>
           </template>
@@ -232,15 +243,13 @@ async function updateTwoFactor(value: boolean | null) {
 
     <Card class="max-w-3xl border-border/60 bg-card/90">
       <CardHeader>
-        <CardTitle>Security</CardTitle>
-        <CardDescription
-          >Manage your password and two-factor authentication preference.</CardDescription
-        >
+        <CardTitle>{{ $t("profile.security.title") }}</CardTitle>
+        <CardDescription>{{ $t("profile.security.description") }}</CardDescription>
       </CardHeader>
       <CardContent class="space-y-6">
         <FormSwitch
-          label="Two-factor authentication"
-          description="Require an email OTP during sign in for extra security."
+          :label="$t('profile.security.twoFactorLabel')"
+          :description="$t('profile.security.twoFactorDescription')"
           :disabled="isUpdatingSecurity"
           :model-value="currentUser?.twoFactorEnabled ?? false"
           @update:model-value="updateTwoFactor"
@@ -255,21 +264,26 @@ async function updateTwoFactor(value: boolean | null) {
             <div class="space-y-4">
               <FormPassword
                 name="currentPassword"
-                label="Current password"
-                placeholder="Enter your current password"
+                :label="$t('profile.security.currentPasswordLabel')"
+                :placeholder="$t('profile.security.currentPasswordPlaceholder')"
+                autocomplete="current-password"
               />
               <FormPassword
                 name="newPassword"
-                label="New password"
-                placeholder="Enter your new password"
+                :label="$t('profile.security.newPasswordLabel')"
+                :placeholder="$t('profile.security.newPasswordPlaceholder')"
+                autocomplete="new-password"
               />
               <FormPassword
                 name="confirmPassword"
-                label="Confirm new password"
-                placeholder="Repeat your new password"
+                :label="$t('profile.security.confirmPasswordLabel')"
+                :placeholder="$t('profile.security.confirmPasswordPlaceholder')"
+                autocomplete="new-password"
               />
               <Button type="submit" :disabled="isSubmitting">
-                {{ isSubmitting ? "Updating…" : "Change password" }}
+                {{
+                  isSubmitting ? $t("profile.security.submitting") : $t("profile.security.submit")
+                }}
               </Button>
             </div>
           </template>

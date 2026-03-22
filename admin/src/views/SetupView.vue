@@ -1,59 +1,62 @@
 <script setup lang="ts">
-import { toTypedSchema } from '@vee-validate/zod'
-import { toast } from 'vue-sonner'
-import { z } from 'zod'
-import { useRouter } from 'vue-router'
-import { AppForm, FormInput, FormPassword, FormSelect } from '@/components/system'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { supportedLocales } from '@/lib/i18n'
-import { useSessionStore } from '@/stores/session'
+import { toTypedSchema } from "@vee-validate/zod";
+import { toast } from "vue-sonner";
+import { z } from "zod";
+import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
+import { getApiErrorMessage } from "@/services/http/error-messages";
+import { AppForm, FormInput, FormPassword, FormSelect } from "@/components/system";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { supportedLocales } from "@/lib/i18n";
+import { useSessionStore } from "@/stores/session";
 
-const router = useRouter()
-const session = useSessionStore()
+const { t } = useI18n();
+const router = useRouter();
+const session = useSessionStore();
 
 const localeOptions = supportedLocales.map((locale) => ({
   label: locale.toUpperCase(),
   value: locale,
-}))
+}));
 
 const validationSchema = toTypedSchema(
   z
     .object({
-      email: z.string().email('Email is invalid'),
-      name: z.string().min(2, 'Name is required'),
-      password: z.string().min(8, 'Minimum 8 characters'),
-      confirmPassword: z.string().min(8, 'Minimum 8 characters'),
-      preferredLocale: z.enum(['fr', 'en']),
+      email: z.string().email(t("auth.validation.emailInvalid")),
+      name: z.string().min(2, t("auth.validation.nameRequired")),
+      password: z.string().min(8, t("auth.validation.min8")),
+      confirmPassword: z.string().min(8, t("auth.validation.min8")),
+      preferredLocale: z.enum(["fr", "en"]),
     })
     .refine((values) => values.password === values.confirmPassword, {
-      message: 'Passwords do not match',
-      path: ['confirmPassword'],
+      message: t("auth.validation.passwordsMustMatch"),
+      path: ["confirmPassword"],
     }),
-)
+);
 
 const initialValues = {
-  email: '',
-  name: '',
-  password: '',
-  confirmPassword: '',
-  preferredLocale: 'fr',
-}
+  email: "",
+  name: "",
+  password: "",
+  confirmPassword: "",
+  preferredLocale: "fr",
+};
 
 async function handleSubmit(values: unknown) {
   const payload = values as {
-    email: string
-    name: string
-    password: string
-    preferredLocale: 'fr' | 'en'
-  }
+    email: string;
+    name: string;
+    password: string;
+    preferredLocale: "fr" | "en";
+  };
 
   try {
-    await session.bootstrapFirstAdmin(payload)
-    toast.success('First administrator created successfully.')
-    await router.replace({ name: 'home' })
+    await session.bootstrapFirstAdmin(payload);
+    toast.success(t("auth.setup.success"));
+    await router.replace({ name: "home" });
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : 'Unable to initialize application')
+    toast.error(getApiErrorMessage(error, "auth.setup.errorDefault"));
   }
 }
 </script>
@@ -62,27 +65,47 @@ async function handleSubmit(values: unknown) {
   <div class="flex min-h-screen items-center justify-center bg-background px-4 py-10">
     <Card class="w-full max-w-xl border-border/60 bg-card/95">
       <CardHeader class="space-y-2">
-        <CardTitle class="text-2xl">Initialize application</CardTitle>
+        <CardTitle class="text-2xl">{{ $t("auth.setup.title") }}</CardTitle>
         <CardDescription>
-          Create the first administrator account to finish the initial setup.
+          {{ $t("auth.setup.description") }}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <AppForm :initial-values="initialValues" :validation-schema="validationSchema" @submit="handleSubmit">
+        <AppForm
+          :initial-values="initialValues"
+          :validation-schema="validationSchema"
+          @submit="handleSubmit"
+        >
           <template #default="{ isSubmitting }">
             <div class="space-y-4">
-              <FormInput name="name" label="Full name" placeholder="Jane Doe" />
-              <FormInput name="email" label="Email" placeholder="admin@example.com" />
-              <FormPassword name="password" label="Password" placeholder="Choose a strong password" />
-              <FormPassword name="confirmPassword" label="Confirm password" placeholder="Repeat your password" />
+              <FormInput
+                name="name"
+                :label="$t('auth.setup.nameLabel')"
+                :placeholder="$t('auth.setup.namePlaceholder')"
+              />
+              <FormInput
+                name="email"
+                :label="$t('auth.setup.emailLabel')"
+                :placeholder="$t('auth.setup.emailPlaceholder')"
+              />
+              <FormPassword
+                name="password"
+                :label="$t('auth.setup.passwordLabel')"
+                :placeholder="$t('auth.setup.passwordPlaceholder')"
+              />
+              <FormPassword
+                name="confirmPassword"
+                :label="$t('auth.setup.confirmPasswordLabel')"
+                :placeholder="$t('auth.setup.confirmPasswordPlaceholder')"
+              />
               <FormSelect
                 name="preferredLocale"
-                label="Preferred locale"
+                :label="$t('auth.setup.localeLabel')"
                 :options="localeOptions"
-                placeholder="Select a locale"
+                :placeholder="$t('auth.setup.localePlaceholder')"
               />
               <Button type="submit" class="w-full" :disabled="isSubmitting">
-                {{ isSubmitting ? 'Creating administrator…' : 'Create first administrator' }}
+                {{ isSubmitting ? $t("auth.setup.submitting") : $t("auth.setup.submit") }}
               </Button>
             </div>
           </template>
