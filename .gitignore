@@ -33,6 +33,7 @@ coverage.out
 /realtime-gateway/.env
 
 # Frontend
+/admin/.env
 /admin/node_modules/
 /admin/dist/
 /admin/dist-ssr/
@@ -41,3 +42,6 @@ coverage.out
 /admin/*.tsbuildinfo
 /admin/test-results/
 /admin/playwright-report/
+
+# CLI
+/cli/node_modules/
