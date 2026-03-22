@@ -5,8 +5,9 @@
 *.swp
 *.swo
 
-# Workspace tooling
-.windsurf/
+# Workspace tooling — version-control rules, workflows, and skills
+.windsurf/memories/
+.windsurf/.cache/
 
 # Environment files
 .env
