@@ -4,8 +4,7 @@ The `docs` directory stores project conventions, checklists, and architecture no
 
 ## Writing guidance
 
-- Keep documents concise, actionable, and tied to the current repository structure
-- Prefer repository-specific examples over generic advice
+- Keep documents concise, ac
 - Update existing docs before creating duplicate documents on the same topic
 - Use checklists and clear sections when documenting repeatable engineering practices
 

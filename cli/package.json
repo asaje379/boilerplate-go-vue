@@ -1,53 +1,57 @@
 {
-  "name": "create-asaje-go-vue",
-  "version": "0.2.0",
-  "description": "CLI to scaffold, configure, and run the Asaje Go + Vue boilerplate",
-  "type": "module",
-  "bin": {
-    "create-asaje-go-vue": "./bin/create-asaje-go-vue.js",
-    "asaje": "./bin/asaje.js"
-  },
-  "scripts": {
-    "create": "node ./bin/create-asaje-go-vue.js",
-    "start": "node ./bin/asaje.js start .",
-    "check": "node --check ./bin/create-asaje-go-vue.js && node --check ./bin/asaje.js",
-    "pack:dry-run": "npm pack --dry-run"
-  },
-  "files": [
-    "bin",
-    "README.md",
-    "package.json"
-  ],
-  "engines": {
-    "node": ">=20.19.0"
-  },
-  "keywords": [
-    "cli",
-    "generator",
-    "vue",
-    "go",
-    "boilerplate",
-    "starter"
-  ],
-  "author": "Asaje",
-  "license": "UNLICENSED",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/asaje379/boilerplate-go-vue.git",
-    "directory": "cli"
-  },
-  "bugs": {
-    "url": "https://github.com/asaje379/boilerplate-go-vue/issues"
-  },
-  "homepage": "https://github.com/asaje379/boilerplate-go-vue/tree/main/cli",
-  "publishConfig": {
-    "access": "public"
-  },
-  "dependencies": {
-    "@clack/prompts": "^0.11.0",
-    "degit": "^2.8.4",
-    "execa": "^9.6.0",
-    "fs-extra": "^11.3.2",
-    "picocolors": "^1.1.1"
-  }
+	"name": "create-asaje-go-vue",
+	"version": "0.2.2",
+	"description": "CLI to scaffold, configure, and run the Asaje Go + Vue boilerplate",
+	"type": "module",
+	"bin": {
+		"create-asaje-go-vue": "./bin/create-asaje-go-vue.js",
+		"asaje": "./bin/asaje.js"
+	},
+	"scripts": {
+		"create": "node ./bin/create-asaje-go-vue.js",
+		"start": "node ./bin/asaje.js start .",
+		"doctor": "node ./bin/asaje.js doctor ..",
+		"setup-railway": "node ./bin/asaje.js setup-railway .. --yes",
+		"sync-railway-env": "node ./bin/asaje.js sync-railway-env .. --yes",
+		"publish:check": "node ./bin/asaje.js publish .",
+		"check": "node --check ./bin/create-asaje-go-vue.js && node --check ./bin/asaje.js",
+		"pack:dry-run": "npm pack --dry-run"
+	},
+	"files": [
+		"bin",
+		"README.md",
+		"package.json"
+	],
+	"engines": {
+		"node": ">=20.19.0"
+	},
+	"keywords": [
+		"cli",
+		"generator",
+		"vue",
+		"go",
+		"boilerplate",
+		"starter"
+	],
+	"author": "Asaje",
+	"license": "UNLICENSED",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/asaje379/boilerplate-go-vue.git",
+		"directory": "cli"
+	},
+	"bugs": {
+		"url": "https://github.com/asaje379/boilerplate-go-vue/issues"
+	},
+	"homepage": "https://github.com/asaje379/boilerplate-go-vue/tree/main/cli",
+	"publishConfig": {
+		"access": "public"
+	},
+	"dependencies": {
+		"@clack/prompts": "^0.11.0",
+		"degit": "^2.8.4",
+		"execa": "^9.6.0",
+		"fs-extra": "^11.3.2",
+		"picocolors": "^1.1.1"
+	}
 }
