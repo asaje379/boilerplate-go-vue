@@ -21,6 +21,9 @@ import pc from "picocolors";
 const DEFAULT_TEMPLATE = process.env.ASAJE_TEMPLATE_REPO || "asaje379/boilerplate-go-vue";
 const DEFAULT_BRANCH = process.env.ASAJE_TEMPLATE_BRANCH || "main";
 const EXCLUDED_TEMPLATE_PATHS = ["cli"];
+const RAILWAY_GRAPHQL_ENDPOINT = "https://backboard.railway.com/graphql/v2";
+const RAILWAY_MANIFEST_FILENAME = "asaje.railway.json";
+const DEFAULT_RAILWAY_BUCKET = "boilerplate-files";
 const ENV_FILE_SPECS = [
   { envPath: "admin/.env", examplePath: "admin/.env.example" },
   { envPath: "api/.env", examplePath: "api/.env.example" },
@@ -43,6 +46,30 @@ async function main() {
     if (invocation.command === "start") {
       await runStart(invocation.argv);
       outro(pc.green("Services stopped."));
+      return;
+    }
+
+    if (invocation.command === "doctor") {
+      await runDoctor(invocation.argv);
+      outro(pc.green("Doctor finished."));
+      return;
+    }
+
+    if (invocation.command === "publish") {
+      await runPublish(invocation.argv);
+      outro(pc.green("Publish checklist complete."));
+      return;
+    }
+
+    if (invocation.command === "setup-railway") {
+      await runSetupRailway(invocation.argv);
+      outro(pc.green("Railway setup complete."));
+      return;
+    }
+
+    if (invocation.command === "sync-railway-env") {
+      await runSyncRailwayEnv(invocation.argv);
+      outro(pc.green("Railway environment sync complete."));
       return;
     }
 
@@ -78,6 +105,22 @@ function resolveInvocation(argv) {
       return { argv: rawArgs.slice(1), command: "start", title: "asaje start" };
     }
 
+    if (firstArg === "doctor") {
+      return { argv: rawArgs.slice(1), command: "doctor", title: "asaje doctor" };
+    }
+
+    if (firstArg === "publish") {
+      return { argv: rawArgs.slice(1), command: "publish", title: "asaje publish" };
+    }
+
+    if (firstArg === "setup-railway") {
+      return { argv: rawArgs.slice(1), command: "setup-railway", title: "asaje setup-railway" };
+    }
+
+    if (firstArg === "sync-railway-env") {
+      return { argv: rawArgs.slice(1), command: "sync-railway-env", title: "asaje sync-railway-env" };
+    }
+
     if (firstArg === "create") {
       return { argv: rawArgs.slice(1), command: "create", title: "asaje create" };
     }
@@ -89,6 +132,14 @@ function resolveInvocation(argv) {
     return { argv: rawArgs.slice(1), command: "start", title: "create-asaje-go-vue" };
   }
 
+  if (firstArg === "doctor") {
+    return { argv: rawArgs.slice(1), command: "doctor", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "publish") {
+    return { argv: rawArgs.slice(1), command: "publish", title: "create-asaje-go-vue" };
+  }
+
   return { argv: rawArgs, command: "create", title: "create-asaje-go-vue" };
 }
 
@@ -97,10 +148,18 @@ function printHelp() {
   console.log(`- ${pc.bold("create-asaje-go-vue <directory>")} scaffold a new project`);
   console.log(`- ${pc.bold("asaje create <directory>")} scaffold a new project`);
   console.log(`- ${pc.bold("asaje start [directory]")} start a configured project`);
+  console.log(`- ${pc.bold("asaje doctor [directory]")} check environment and project readiness`);
+  console.log(`- ${pc.bold("asaje publish")} run npm publish checklist for the CLI package`);
+  console.log(`- ${pc.bold("asaje setup-railway [directory]")} provision Railway infrastructure for a project`);
+  console.log(`- ${pc.bold("asaje sync-railway-env [directory]")} sync Railway app variables without provisioning`);
   console.log(pc.bold("\nExamples"));
   console.log(`- ${pc.bold("npx create-asaje-go-vue my-app")}`);
   console.log(`- ${pc.bold("node ./bin/create-asaje-go-vue.js my-app --yes")}`);
   console.log(`- ${pc.bold("node ./bin/asaje.js start ../my-app")}`);
+  console.log(`- ${pc.bold("node ./bin/asaje.js doctor ..")}`);
+  console.log(`- ${pc.bold("node ./bin/asaje.js publish")}`);
+  console.log(`- ${pc.bold("node ./bin/asaje.js setup-railway ..")}`);
+  console.log(`- ${pc.bold("node ./bin/asaje.js sync-railway-env ..")}`);
 }
 
 async function runCreate(argv) {
@@ -752,14 +811,1077 @@ async function runStart(argv) {
   }
 
   const runtimeConfig = await loadRuntimeConfig(projectDir);
-  printStartSummary(projectDir, runtimeConfig, answers.selectedServices);
+  printStartSummary(projectDir, runtimeConfig, answers.profile, answers.selectedServices);
   await startManagedProcesses(projectDir, runtimeConfig, answers.selectedServices);
+}
+
+async function runDoctor(argv) {
+  const args = parseDirectoryArgs(argv);
+  const projectDir = path.resolve(process.cwd(), args.directory || ".");
+  const results = [];
+
+  console.log(pc.bold("\nTooling"));
+  for (const tool of [
+    { command: "node", args: ["--version"], name: "node" },
+    { command: "pnpm", args: ["--version"], name: "pnpm" },
+    { command: "go", args: ["version"], name: "go" },
+    { command: "docker", args: ["--version"], name: "docker" },
+  ]) {
+    results.push(await checkCommand(tool));
+  }
+
+  console.log(pc.bold("\nProject"));
+  if (await fs.pathExists(projectDir)) {
+    results.push({ message: `project directory found: ${projectDir}`, ok: true });
+  } else {
+    results.push({ message: `project directory missing: ${projectDir}`, ok: false });
+  }
+
+  if (await fs.pathExists(projectDir)) {
+    for (const relativePath of ["admin", "api", "realtime-gateway", "docker-compose.yml"]) {
+      const exists = await fs.pathExists(path.join(projectDir, relativePath));
+      results.push({
+        message: `${relativePath} ${exists ? "present" : "missing"}`,
+        ok: exists,
+      });
+    }
+
+    for (const spec of ENV_FILE_SPECS) {
+      const envExists = await fs.pathExists(path.join(projectDir, spec.envPath));
+      const exampleExists = await fs.pathExists(path.join(projectDir, spec.examplePath));
+      results.push({
+        message: `${spec.envPath} ${envExists ? "present" : exampleExists ? `missing (can be created from ${spec.examplePath})` : "missing"}`,
+        ok: envExists || exampleExists,
+      });
+    }
+  }
+
+  let hasFailure = false;
+  for (const result of results) {
+    const icon = result.ok ? pc.green("OK") : pc.red("FAIL");
+    console.log(`- ${icon} ${result.message}`);
+    if (!result.ok) {
+      hasFailure = true;
+    }
+  }
+
+  if (hasFailure) {
+    throw new Error("Doctor found blocking issues.");
+  }
+}
+
+async function runPublish(argv) {
+  const args = parseDirectoryArgs(argv);
+  const packageDir = path.resolve(process.cwd(), args.directory || ".");
+  const packageJsonPath = path.join(packageDir, "package.json");
+
+  if (!(await fs.pathExists(packageJsonPath))) {
+    throw new Error(`No package.json found in ${packageDir}`);
+  }
+
+  console.log(pc.bold("\nPublish checks"));
+  await runCommand("npm", ["run", "check"], packageDir);
+  await runCommand("npm", ["run", "pack:dry-run"], packageDir);
+
+  console.log(pc.bold("\nManual release checklist"));
+  console.log(`- Verify npm account with ${pc.bold("npm whoami")}`);
+  console.log(`- Confirm package name availability with ${pc.bold("npm view create-asaje-go-vue")}`);
+  console.log(`- Publish with ${pc.bold("npm publish")}`);
+}
+
+async function runSetupRailway(argv) {
+  const args = parseSetupRailwayArgs(argv);
+  const answers = await collectSetupRailwayAnswers(args);
+  const projectDir = path.resolve(process.cwd(), answers.directory);
+
+  await ensureProjectStructure(projectDir);
+  await ensureRailwayCliInstalled();
+  await ensureRailwayAuthenticated(projectDir, answers.environment);
+
+  const manifest = await readRailwayManifest(projectDir);
+  manifest.resources ||= {};
+  const railwayContext = await loadRailwayContext(projectDir, answers.environment);
+  railwayContext.environmentRef = answers.environment || railwayContext.environmentId || railwayContext.environmentName;
+  const existingServices = await discoverRailwayServices(railwayContext, projectDir);
+  const summary = [];
+  const variableSummary = [];
+
+  console.log(pc.bold("\nProvisioning"));
+
+  const postgresResult = await ensureRailwayResource({
+    aliases: ["postgres", "postgresql"],
+    commandArgs: ["add", "--database", "postgres"],
+    dryRun: answers.dryRun,
+    existingServices,
+    key: "postgres",
+    manifest,
+    projectDir,
+    railwayContext,
+  });
+  summary.push(postgresResult);
+
+  const rabbitMqResult = await ensureRailwayResource({
+    aliases: ["rabbitmq"],
+    commandArgs: ["deploy", "--template", "rabbitmq"],
+    dryRun: answers.dryRun,
+    existingServices,
+    key: "rabbitmq",
+    manifest,
+    projectDir,
+    railwayContext,
+  });
+  summary.push(rabbitMqResult);
+
+  const objectStorageResult = await ensureRailwayResource({
+    aliases: ["object-storage", "storage", "simple-s3", "minio"],
+    commandArgs: [
+      "deploy",
+      "--template",
+      "simple-s3",
+      "--variable",
+      `MINIO_BUCKET=${answers.bucket}`,
+    ],
+    dryRun: answers.dryRun,
+    existingServices,
+    key: "objectStorage",
+    manifest,
+    metadata: { bucket: answers.bucket },
+    projectDir,
+    railwayContext,
+  });
+  summary.push(objectStorageResult);
+
+  manifest.bucket = answers.bucket;
+  manifest.appServices ||= {};
+  manifest.environmentId = railwayContext.environmentId || manifest.environmentId || null;
+  manifest.environmentName = railwayContext.environmentName || manifest.environmentName || null;
+  manifest.projectId = railwayContext.projectId || manifest.projectId || null;
+  manifest.projectName = railwayContext.projectName || manifest.projectName || null;
+  manifest.updatedAt = new Date().toISOString();
+
+  const servicesAfterProvision = await discoverRailwayServices(railwayContext, projectDir);
+  updateRailwayManifestAppServices(manifest, servicesAfterProvision);
+  await wireRailwayVariables({
+    dryRun: answers.dryRun,
+    manifest,
+    projectDir,
+    railwayContext,
+    services: servicesAfterProvision,
+    summary: variableSummary,
+  });
+
+  if (!answers.dryRun) {
+    await writeRailwayManifest(projectDir, manifest);
+  }
+  printRailwaySetupSummary(projectDir, railwayContext, summary, variableSummary, answers.bucket, answers.dryRun);
+}
+
+async function runSyncRailwayEnv(argv) {
+  const args = parseSetupRailwayArgs(argv);
+  const answers = await collectSetupRailwayAnswers(args);
+  const projectDir = path.resolve(process.cwd(), answers.directory);
+
+  await ensureProjectStructure(projectDir);
+  await ensureRailwayCliInstalled();
+  await ensureRailwayAuthenticated(projectDir, answers.environment);
+
+  const manifest = await readRailwayManifest(projectDir);
+  manifest.resources ||= {};
+  manifest.appServices ||= {};
+
+  const railwayContext = await loadRailwayContext(projectDir, answers.environment);
+  railwayContext.environmentRef = answers.environment || railwayContext.environmentId || railwayContext.environmentName;
+  const services = await discoverRailwayServices(railwayContext, projectDir);
+  const variableSummary = [];
+
+  updateRailwayManifestAppServices(manifest, services);
+  await wireRailwayVariables({
+    dryRun: answers.dryRun,
+    manifest,
+    projectDir,
+    railwayContext,
+    services,
+    summary: variableSummary,
+  });
+
+  manifest.bucket = manifest.bucket || answers.bucket;
+  manifest.environmentId = railwayContext.environmentId || manifest.environmentId || null;
+  manifest.environmentName = railwayContext.environmentName || manifest.environmentName || null;
+  manifest.projectId = railwayContext.projectId || manifest.projectId || null;
+  manifest.projectName = railwayContext.projectName || manifest.projectName || null;
+  manifest.updatedAt = new Date().toISOString();
+
+  if (!answers.dryRun) {
+    await writeRailwayManifest(projectDir, manifest);
+  }
+
+  printRailwaySetupSummary(
+    projectDir,
+    railwayContext,
+    [],
+    variableSummary,
+    manifest.bucket || answers.bucket,
+    answers.dryRun,
+  );
+}
+
+function parseDirectoryArgs(argv) {
+  return { directory: argv[0] || "." };
+}
+
+function parseSetupRailwayArgs(argv) {
+  const options = {
+    bucket: DEFAULT_RAILWAY_BUCKET,
+    directory: ".",
+    dryRun: false,
+    environment: undefined,
+    yes: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--yes" || arg === "-y") {
+      options.yes = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--bucket") {
+      options.bucket = argv[index + 1] || options.bucket;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--bucket=")) {
+      options.bucket = arg.split("=")[1] || options.bucket;
+      continue;
+    }
+
+    if (arg === "--environment" || arg === "-e") {
+      options.environment = argv[index + 1] || options.environment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--environment=")) {
+      options.environment = arg.split("=")[1] || options.environment;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  return options;
+}
+
+async function collectSetupRailwayAnswers(args) {
+  if (args.yes) {
+    return {
+      bucket: args.bucket,
+      directory: args.directory,
+      dryRun: args.dryRun,
+      environment: args.environment,
+    };
+  }
+
+  const directory = await prompt(
+    text({
+      defaultValue: args.directory,
+      message: "Project directory to configure on Railway?",
+      placeholder: ".",
+      validate(value) {
+        return value.trim().length === 0 ? "Project directory is required" : undefined;
+      },
+    }),
+  );
+
+  const bucket = await prompt(
+    text({
+      defaultValue: args.bucket,
+      message: "Object storage bucket name?",
+      placeholder: DEFAULT_RAILWAY_BUCKET,
+      validate(value) {
+        return /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value)
+          ? undefined
+          : "Use 3-63 lowercase letters, numbers, dots, or hyphens";
+      },
+    }),
+  );
+
+  let environment = args.environment;
+  if (!environment) {
+    environment = await prompt(
+      text({
+        defaultValue: "",
+        message: "Railway environment name or ID? (leave empty for linked default)",
+        placeholder: "production",
+      }),
+    );
+  }
+
+  return {
+    bucket,
+    directory,
+    dryRun: args.dryRun,
+    environment: environment?.trim() || undefined,
+  };
+}
+
+async function ensureRailwayCliInstalled() {
+  const result = await checkCommand({ command: "railway", args: ["--version"], name: "railway" });
+  if (!result.ok) {
+    throw new Error(
+      "Railway CLI is required for this command. Install it with `brew install railway` or `npm i -g @railway/cli`.",
+    );
+  }
+}
+
+async function ensureRailwayAuthenticated(projectDir, environment) {
+  const result = await execa("railway", buildRailwayArgs(["whoami"], environment), {
+    cwd: projectDir,
+    reject: false,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error("Railway CLI is not authenticated. Run `railway login` and try again.");
+  }
+}
+
+async function readRailwayManifest(projectDir) {
+  const manifestPath = path.join(projectDir, RAILWAY_MANIFEST_FILENAME);
+  if (!(await fs.pathExists(manifestPath))) {
+    return {
+      appServices: {},
+      bucket: DEFAULT_RAILWAY_BUCKET,
+      environmentId: null,
+      environmentName: null,
+      projectId: null,
+      projectName: null,
+      resources: {},
+      updatedAt: null,
+    };
+  }
+
+  return fs.readJson(manifestPath);
+}
+
+async function writeRailwayManifest(projectDir, manifest) {
+  const manifestPath = path.join(projectDir, RAILWAY_MANIFEST_FILENAME);
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+}
+
+async function loadRailwayContext(projectDir, environment) {
+  const result = await execa("railway", buildRailwayArgs(["status", "--json"], environment), {
+    cwd: projectDir,
+    reject: false,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Unable to read Railway project status for ${projectDir}. Link the directory first with \`railway link\` or \`railway init\`.`,
+    );
+  }
+
+  const payload = parseJsonOutput(result.stdout);
+  if (!payload) {
+    throw new Error("Railway status returned an unexpected response. Make sure the project is linked and try again.");
+  }
+
+  const project = payload.project || payload.linkedProject || payload.workspace?.project || null;
+  const environmentData = payload.environment || payload.linkedEnvironment || payload.deployment?.environment || null;
+
+  return {
+    environmentId: pickFirstString([
+      environmentData?.id,
+      payload.environmentId,
+      findFirstNestedValue(payload, "environmentId"),
+    ]),
+    environmentName: pickFirstString([
+      environmentData?.name,
+      payload.environmentName,
+      environment,
+      findFirstNestedValue(payload, "environmentName"),
+    ]),
+    projectId: pickFirstString([project?.id, payload.projectId, findFirstNestedValue(payload, "projectId")]),
+    projectName: pickFirstString([
+      project?.name,
+      payload.projectName,
+      findFirstNestedValue(payload, "projectName"),
+    ]),
+  };
+}
+
+async function discoverRailwayServices(railwayContext, projectDir) {
+  const cliServices = await discoverRailwayServicesViaCli(railwayContext, projectDir);
+  if (cliServices.length > 0) {
+    return cliServices;
+  }
+
+  const auth = getRailwayApiAuth();
+  if (!auth || !railwayContext.projectId) {
+    return [];
+  }
+
+  try {
+    const response = await fetch(RAILWAY_GRAPHQL_ENDPOINT, {
+      body: JSON.stringify({
+        query: `query SetupRailwayServices($projectId: String!) {
+          project(id: $projectId) {
+            services {
+              edges {
+                node {
+                  id
+                  name
+                  icon
+                }
+              }
+            }
+          }
+        }`,
+        variables: {
+          projectId: railwayContext.projectId,
+        },
+      }),
+      headers: {
+        ...auth.headers,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = await response.json();
+    const nodes = payload?.data?.project?.services?.edges || [];
+    return nodes
+      .map((edge) => edge?.node)
+      .filter(Boolean)
+      .map((service) => ({
+        icon: typeof service.icon === "string" ? service.icon : null,
+        id: typeof service.id === "string" ? service.id : null,
+        name: typeof service.name === "string" ? service.name : null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function discoverRailwayServicesViaCli(railwayContext, projectDir) {
+  try {
+    const result = await execa(
+      "railway",
+      buildRailwayArgs(["service", "status", "--all", "--json"], railwayContext.environmentRef),
+      {
+        cwd: projectDir,
+        reject: false,
+      },
+    );
+
+    if (result.exitCode !== 0) {
+      return [];
+    }
+
+    const payload = parseJsonOutput(result.stdout);
+    if (!payload) {
+      return [];
+    }
+
+    return normalizeRailwayServices(extractRailwayServiceCandidates(payload));
+  } catch {
+    return [];
+  }
+}
+
+function getRailwayApiAuth() {
+  if (process.env.RAILWAY_API_TOKEN) {
+    return {
+      headers: {
+        Authorization: `Bearer ${process.env.RAILWAY_API_TOKEN}`,
+      },
+    };
+  }
+
+  if (process.env.RAILWAY_TOKEN) {
+    return {
+      headers: {
+        "Project-Access-Token": process.env.RAILWAY_TOKEN,
+      },
+    };
+  }
+
+  return null;
+}
+
+async function ensureRailwayResource(config) {
+  const manifestEntry = config.manifest.resources?.[config.key];
+  const existingService = findRailwayService(config.existingServices, config.aliases, manifestEntry?.serviceName);
+
+  if (existingService) {
+    config.manifest.resources[config.key] = {
+      bucket: config.metadata?.bucket || manifestEntry?.bucket || null,
+      detectedAt: new Date().toISOString(),
+      serviceId: existingService.id || manifestEntry?.serviceId || null,
+      serviceName: existingService.name || manifestEntry?.serviceName || null,
+      source: "remote",
+      status: "existing",
+    };
+
+    console.log(`- ${pc.cyan(config.key)} already present${existingService.name ? ` (${existingService.name})` : ""}`);
+    return {
+      key: config.key,
+      serviceName: existingService.name || manifestEntry?.serviceName || null,
+      status: "existing",
+    };
+  }
+
+  if (manifestEntry?.status === "created" || manifestEntry?.status === "existing") {
+    console.log(`- ${pc.cyan(config.key)} already tracked in ${RAILWAY_MANIFEST_FILENAME}`);
+    return {
+      key: config.key,
+      serviceName: manifestEntry.serviceName || null,
+      status: "tracked",
+    };
+  }
+
+  console.log(`- creating ${pc.cyan(config.key)}...`);
+  if (!config.dryRun) {
+    await runRailwayCommand(config.projectDir, config.railwayContext.environmentRef, config.commandArgs);
+  }
+
+  config.manifest.resources[config.key] = {
+    bucket: config.metadata?.bucket || null,
+    detectedAt: new Date().toISOString(),
+    serviceId: null,
+    serviceName: null,
+    source: "cli",
+    status: "created",
+  };
+
+  return {
+    key: config.key,
+    serviceName: null,
+    status: config.dryRun ? "dry-run" : "created",
+  };
+}
+
+async function wireRailwayVariables(config) {
+  console.log(pc.bold("\nVariables"));
+
+  const localEnv = await loadRailwayLocalEnvDefaults(config.projectDir);
+
+  const infra = {
+    objectStorage: findRailwayService(
+      config.services,
+      ["object-storage", "storage", "simple-s3", "minio"],
+      config.manifest.resources.objectStorage?.serviceName,
+    ),
+    postgres: findRailwayService(
+      config.services,
+      ["postgres", "postgresql"],
+      config.manifest.resources.postgres?.serviceName,
+    ),
+    rabbitmq: findRailwayService(
+      config.services,
+      ["rabbitmq"],
+      config.manifest.resources.rabbitmq?.serviceName,
+    ),
+  };
+  const appServices = {
+    admin: findRailwayService(config.services, ["admin", "frontend", "web"], config.manifest.appServices?.admin?.serviceName),
+    api: findRailwayService(config.services, ["api", "backend", "server"], config.manifest.appServices?.api?.serviceName),
+    realtime: findRailwayService(
+      config.services,
+      ["realtime-gateway", "realtime"],
+      config.manifest.appServices?.realtime?.serviceName,
+    ),
+  };
+
+  updateRailwayManifestAppServices(config.manifest, Object.values(appServices).filter(Boolean));
+
+  if (!appServices.api) {
+    console.log(`- ${pc.yellow("api")} service not found, skipping API variable wiring`);
+  }
+  if (!appServices.realtime) {
+    console.log(`- ${pc.yellow("realtime-gateway")} service not found, skipping realtime variable wiring`);
+  }
+  if (!appServices.admin) {
+    console.log(`- ${pc.yellow("admin")} service not found, skipping admin variable wiring`);
+  }
+
+  if (appServices.api) {
+    const existingApiVariables = await loadRailwayServiceVariables(
+      config.projectDir,
+      config.railwayContext.environmentRef,
+      appServices.api.name,
+    );
+    const variables = {};
+    const sharedSecrets = buildRailwaySharedSecrets(localEnv, existingApiVariables);
+    Object.assign(variables, sharedSecrets.api);
+    if (infra.postgres?.name) {
+      variables.DATABASE_URL = railwayReference(infra.postgres.name, "DATABASE_URL");
+    }
+    if (infra.rabbitmq?.name) {
+      variables.RABBITMQ_URL = buildRabbitMqUrlReference(infra.rabbitmq.name);
+    }
+    if (infra.objectStorage?.name) {
+      Object.assign(variables, buildObjectStorageVariables(infra.objectStorage.name));
+    }
+    if (appServices.admin?.name) {
+      variables.CORS_ALLOWED_ORIGINS = `https://${railwayReference(appServices.admin.name, "RAILWAY_PUBLIC_DOMAIN")}`;
+    }
+    await applyRailwayVariables({
+      dryRun: config.dryRun,
+      environment: config.railwayContext.environmentRef,
+      projectDir: config.projectDir,
+      serviceName: appServices.api.name,
+      summary: config.summary,
+      variables,
+    });
+  }
+
+  if (appServices.realtime) {
+    const variables = {};
+    Object.assign(variables, buildRealtimeDefaults(localEnv));
+    if (infra.rabbitmq?.name) {
+      variables.RABBITMQ_URL = buildRabbitMqUrlReference(infra.rabbitmq.name);
+    }
+    if (appServices.api?.name) {
+      variables.JWT_SECRET = railwayReference(appServices.api.name, "JWT_SECRET");
+    }
+    if (appServices.admin?.name) {
+      variables.CORS_ALLOWED_ORIGINS = `https://${railwayReference(appServices.admin?.name || "admin", "RAILWAY_PUBLIC_DOMAIN")}`;
+    }
+    await applyRailwayVariables({
+      dryRun: config.dryRun,
+      environment: config.railwayContext.environmentRef,
+      projectDir: config.projectDir,
+      serviceName: appServices.realtime.name,
+      summary: config.summary,
+      variables,
+    });
+  }
+
+  if (appServices.admin) {
+    const variables = {};
+    Object.assign(variables, buildAdminDefaults(localEnv));
+    if (appServices.api?.name) {
+      variables.VITE_API_BASE_URL = `https://${railwayReference(appServices.api.name, "RAILWAY_PUBLIC_DOMAIN")}/api/v1`;
+    }
+    if (appServices.realtime?.name) {
+      variables.VITE_REALTIME_BASE_URL = `https://${railwayReference(appServices.realtime.name, "RAILWAY_PUBLIC_DOMAIN")}`;
+    }
+    await applyRailwayVariables({
+      dryRun: config.dryRun,
+      environment: config.railwayContext.environmentRef,
+      projectDir: config.projectDir,
+      serviceName: appServices.admin.name,
+      summary: config.summary,
+      variables,
+    });
+  }
+}
+
+async function loadRailwayLocalEnvDefaults(projectDir) {
+  const [apiEnv, realtimeEnv, adminEnv] = await Promise.all([
+    tryReadEnvFile(path.join(projectDir, "api/.env")),
+    tryReadEnvFile(path.join(projectDir, "realtime-gateway/.env")),
+    tryReadEnvFile(path.join(projectDir, "admin/.env")),
+  ]);
+
+  return {
+    admin: adminEnv,
+    api: apiEnv,
+    realtime: realtimeEnv,
+  };
+}
+
+function buildRailwaySharedSecrets(localEnv, existingVariables) {
+  const jwtSecret =
+    sanitizeSecret(localEnv.api.JWT_SECRET, "change-me") ||
+    sanitizeSecret(existingVariables.JWT_SECRET, "${{ api.JWT_SECRET }}") ||
+    randomSecret(32);
+  const swaggerPassword =
+    sanitizeSecret(localEnv.api.SWAGGER_PASSWORD, "change-me-too") ||
+    sanitizeSecret(existingVariables.SWAGGER_PASSWORD, "${{ api.SWAGGER_PASSWORD }}") ||
+    randomSecret(18);
+
+  return {
+    api: {
+      ACCESS_TOKEN_TTL_MINUTES: localEnv.api.ACCESS_TOKEN_TTL_MINUTES || "60",
+      DEFAULT_LOCALE: localEnv.api.DEFAULT_LOCALE || "fr",
+      FILE_MAX_SIZE_MB: localEnv.api.FILE_MAX_SIZE_MB || "25",
+      FILE_SIGNED_URL_TTL_MINUTES: localEnv.api.FILE_SIGNED_URL_TTL_MINUTES || "15",
+      JWT_SECRET: jwtSecret,
+      LOGIN_OTP_TTL_MINUTES: localEnv.api.LOGIN_OTP_TTL_MINUTES || "10",
+      MAILCHIMP_TRANSACTIONAL_API_KEY: localEnv.api.MAILCHIMP_TRANSACTIONAL_API_KEY || "dev-placeholder-key",
+      MAIL_FROM_EMAIL: localEnv.api.MAIL_FROM_EMAIL || "no-reply@example.com",
+      MAIL_FROM_NAME: localEnv.api.MAIL_FROM_NAME || "Boilerplate API",
+      PASSWORD_RESET_OTP_TTL_MINUTES: localEnv.api.PASSWORD_RESET_OTP_TTL_MINUTES || "15",
+      RABBITMQ_REALTIME_EXCHANGE: localEnv.api.RABBITMQ_REALTIME_EXCHANGE || "boilerplate.realtime",
+      RABBITMQ_TASKS_EXCHANGE: localEnv.api.RABBITMQ_TASKS_EXCHANGE || "boilerplate.tasks",
+      RABBITMQ_WORKER_CONSUMER_TAG: localEnv.api.RABBITMQ_WORKER_CONSUMER_TAG || "api-worker",
+      RABBITMQ_WORKER_QUEUE: localEnv.api.RABBITMQ_WORKER_QUEUE || "api.worker.default",
+      RATE_LIMIT_BURST: localEnv.api.RATE_LIMIT_BURST || "60",
+      RATE_LIMIT_RPM: localEnv.api.RATE_LIMIT_RPM || "120",
+      REFRESH_TOKEN_TTL_MINUTES: localEnv.api.REFRESH_TOKEN_TTL_MINUTES || "10080",
+      SWAGGER_PASSWORD: swaggerPassword,
+      SWAGGER_USERNAME: localEnv.api.SWAGGER_USERNAME || "swagger",
+    },
+  };
+}
+
+function buildRealtimeDefaults(localEnv) {
+  return {
+    RABBITMQ_REALTIME_EXCHANGE: localEnv.realtime.RABBITMQ_REALTIME_EXCHANGE || "boilerplate.realtime",
+    REALTIME_HEARTBEAT_SECONDS: localEnv.realtime.REALTIME_HEARTBEAT_SECONDS || "25",
+    REALTIME_INSTANCE_ID: localEnv.realtime.REALTIME_INSTANCE_ID || "realtime-gateway-railway",
+    REALTIME_QUEUE_PREFIX: localEnv.realtime.REALTIME_QUEUE_PREFIX || "realtime-gateway",
+    REALTIME_WRITE_TIMEOUT_SECONDS: localEnv.realtime.REALTIME_WRITE_TIMEOUT_SECONDS || "10",
+  };
+}
+
+function buildAdminDefaults(localEnv) {
+  return {
+    VITE_API_TIMEOUT_MS: localEnv.admin.VITE_API_TIMEOUT_MS || "15000",
+    VITE_APP_NAME: localEnv.admin.VITE_APP_NAME || "Admin Blueprint",
+    VITE_REALTIME_DEFAULT_TRANSPORT: localEnv.admin.VITE_REALTIME_DEFAULT_TRANSPORT || "sse",
+    VITE_REALTIME_RECONNECT_DELAY_MS: localEnv.admin.VITE_REALTIME_RECONNECT_DELAY_MS || "3000",
+  };
+}
+
+function sanitizeSecret(value, placeholder) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized === placeholder) {
+    return "";
+  }
+  return normalized;
+}
+
+async function tryReadEnvFile(filePath) {
+  if (!(await fs.pathExists(filePath))) {
+    return {};
+  }
+
+  return readEnvFile(filePath);
+}
+
+function buildObjectStorageVariables(serviceName) {
+  return {
+    MINIO_ACCESS_KEY: railwayReference(serviceName, "MINIO_ROOT_USER"),
+    MINIO_BUCKET_NAME: railwayReference(serviceName, "MINIO_BUCKET"),
+    MINIO_ENDPOINT: railwayReference(serviceName, "RAILWAY_PRIVATE_DOMAIN"),
+    MINIO_PORT: "9000",
+    MINIO_PUBLIC_URL: `https://${railwayReference(serviceName, "RAILWAY_PUBLIC_DOMAIN")}`,
+    MINIO_SECRET_KEY: railwayReference(serviceName, "MINIO_ROOT_PASSWORD"),
+    MINIO_USE_SSL: "false",
+    OBJECT_STORAGE_PROVIDER: "minio",
+  };
+}
+
+function buildRabbitMqUrlReference(serviceName) {
+  return `amqp://${railwayReference(serviceName, "RABBITMQ_DEFAULT_USER")}:${railwayReference(serviceName, "RABBITMQ_DEFAULT_PASS")}@${railwayReference(serviceName, "RAILWAY_PRIVATE_DOMAIN")}:5672/`;
+}
+
+function railwayReference(serviceName, variableName) {
+  return "${{ " + serviceName + "." + variableName + " }}";
+}
+
+async function applyRailwayVariables(config) {
+  const entries = Object.entries(config.variables).filter(([, value]) => typeof value === "string" && value.length > 0);
+  if (entries.length === 0) {
+    console.log(`- ${pc.dim(config.serviceName)} no variables to set`);
+    return;
+  }
+
+  if (config.dryRun) {
+    console.log(`- ${pc.cyan(config.serviceName)} would set ${entries.map(([key]) => key).join(", ")}`);
+    config.summary.push({
+      keys: entries.map(([key]) => key),
+      serviceName: config.serviceName,
+      status: "dry-run",
+    });
+    return;
+  }
+
+  await runRailwayCommand(config.projectDir, config.environment, [
+    "variable",
+    "set",
+    ...entries.map(([key, value]) => `${key}=${value}`),
+    "--service",
+    config.serviceName,
+  ]);
+  console.log(`- ${pc.cyan(config.serviceName)} set ${entries.map(([key]) => key).join(", ")}`);
+  config.summary.push({
+    keys: entries.map(([key]) => key),
+    serviceName: config.serviceName,
+    status: "updated",
+  });
+}
+
+async function loadRailwayServiceVariables(projectDir, environment, serviceName) {
+  try {
+    const result = await execa(
+      "railway",
+      buildRailwayArgs(["variable", "list", "--json", "--service", serviceName], environment),
+      {
+        cwd: projectDir,
+        reject: false,
+      },
+    );
+
+    if (result.exitCode !== 0) {
+      return {};
+    }
+
+    return normalizeRailwayVariables(parseJsonOutput(result.stdout));
+  } catch {
+    return {};
+  }
+}
+
+function findRailwayService(services, aliases, preferredName) {
+  if (preferredName) {
+    const exact = services.find(
+      (service) => normalizeRailwayServiceName(service.name) === normalizeRailwayServiceName(preferredName),
+    );
+    if (exact) {
+      return exact;
+    }
+  }
+
+  const normalizedAliases = aliases.map(normalizeRailwayServiceName);
+  return services.find((service) => {
+    const normalizedName = normalizeRailwayServiceName(service.name);
+    return normalizedAliases.some((alias) => normalizedName === alias || normalizedName.includes(alias));
+  });
+}
+
+function normalizeRailwayServiceName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeRailwayServices(services) {
+  const seen = new Set();
+  const normalized = [];
+
+  for (const service of services) {
+    const name = pickFirstString([service.name, service.serviceName]);
+    if (!name) {
+      continue;
+    }
+
+    const id = pickFirstString([service.id, service.serviceId]);
+    const key = `${normalizeRailwayServiceName(name)}:${id || ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalized.push({ id, name });
+  }
+
+  return normalized;
+}
+
+function normalizeRailwayVariables(input) {
+  const normalized = {};
+
+  visitRailwayJson(input, (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return;
+    }
+
+    const key = pickFirstString([value.name, value.key]);
+    const rawValue = pickFirstString([value.value, value.resolvedValue]);
+    if (!key || rawValue === null) {
+      return;
+    }
+
+    normalized[key] = rawValue;
+  });
+
+  return normalized;
+}
+
+function updateRailwayManifestAppServices(manifest, services) {
+  manifest.appServices ||= {};
+
+  const entries = [
+    ["api", findRailwayService(services, ["api", "backend", "server"], manifest.appServices.api?.serviceName)],
+    ["admin", findRailwayService(services, ["admin", "frontend", "web"], manifest.appServices.admin?.serviceName)],
+    [
+      "realtime",
+      findRailwayService(
+        services,
+        ["realtime-gateway", "realtime"],
+        manifest.appServices.realtime?.serviceName,
+      ),
+    ],
+  ];
+
+  for (const [key, service] of entries) {
+    if (!service?.name) {
+      continue;
+    }
+
+    manifest.appServices[key] = {
+      serviceId: service.id || manifest.appServices[key]?.serviceId || null,
+      serviceName: service.name,
+    };
+  }
+}
+
+function extractRailwayServiceCandidates(input) {
+  const candidates = [];
+
+  visitRailwayJson(input, (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return;
+    }
+
+    if (typeof value.name === "string" || typeof value.serviceName === "string") {
+      candidates.push(value);
+    }
+  });
+
+  return candidates;
+}
+
+function visitRailwayJson(input, visitor) {
+  visitor(input);
+  if (!input || typeof input !== "object") {
+    return;
+  }
+
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      visitRailwayJson(item, visitor);
+    }
+    return;
+  }
+
+  for (const value of Object.values(input)) {
+    visitRailwayJson(value, visitor);
+  }
+}
+
+async function runRailwayCommand(projectDir, environment, args) {
+  const result = await execa("railway", buildRailwayArgs(args, environment), {
+    cwd: projectDir,
+    reject: false,
+    stderr: "inherit",
+    stdout: "inherit",
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(`Railway command failed: railway ${args.join(" ")}`);
+  }
+}
+
+function buildRailwayArgs(args, environment) {
+  if (!environment) {
+    return args;
+  }
+
+  return [...args, "--environment", environment];
+}
+
+function parseJsonOutput(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function pickFirstString(values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function findFirstNestedValue(input, key) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  if (typeof input[key] === "string") {
+    return input[key];
+  }
+
+  for (const value of Object.values(input)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+
+    const nested = findFirstNestedValue(value, key);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+}
+
+function printRailwaySetupSummary(projectDir, railwayContext, summary, variableSummary, bucket, dryRun) {
+  console.log(pc.bold("\nRailway"));
+  console.log(`- Directory: ${pc.bold(projectDir)}`);
+  if (railwayContext.projectName || railwayContext.projectId) {
+    console.log(`- Project: ${pc.bold(railwayContext.projectName || railwayContext.projectId)}`);
+  }
+  if (railwayContext.environmentName || railwayContext.environmentId) {
+    console.log(`- Environment: ${pc.bold(railwayContext.environmentName || railwayContext.environmentId)}`);
+  }
+  console.log(`- Bucket: ${pc.bold(bucket)}`);
+
+  console.log(pc.bold("\nResources"));
+  for (const item of summary) {
+    const detail = item.serviceName ? ` (${item.serviceName})` : "";
+    console.log(`- ${pc.bold(item.key)}: ${item.status}${detail}`);
+  }
+
+  console.log(pc.bold("\nVariables"));
+  if (variableSummary.length === 0) {
+    console.log("- No application variables were updated");
+  } else {
+    for (const item of variableSummary) {
+      console.log(`- ${pc.bold(item.serviceName)}: ${item.status} ${item.keys.join(", ")}`);
+    }
+  }
+
+  if (dryRun) {
+    console.log(`- Dry run only, ${pc.bold(RAILWAY_MANIFEST_FILENAME)} was not written`);
+  } else {
+    console.log(`- Manifest written to ${pc.bold(RAILWAY_MANIFEST_FILENAME)} for future runs`);
+  }
+
+  if (!getRailwayApiAuth()) {
+    console.log(pc.yellow("\nNote: Set RAILWAY_API_TOKEN or RAILWAY_TOKEN to let future runs verify remote services before provisioning."));
+  }
 }
 
 function parseStartArgs(argv) {
   const options = {
     directory: ".",
     installDependencies: undefined,
+    profile: undefined,
     startInfra: undefined,
     yes: false,
   };
@@ -790,6 +1912,17 @@ function parseStartArgs(argv) {
 
     if (arg === "--skip-infra") {
       options.startInfra = false;
+      continue;
+    }
+
+    if (arg === "--profile") {
+      options.profile = argv[index + 1] || options.profile;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--profile=")) {
+      options.profile = arg.split("=")[1] || options.profile;
       continue;
     }
 
@@ -825,6 +1958,7 @@ async function collectStartAnswers(args) {
     return {
       directory: args.directory,
       installDependencies: args.installDependencies ?? false,
+      profile: args.profile || inferProfileFromArgs(args) || "full",
       selectedServices: buildSelectedServices(args),
       startInfra: args.startInfra ?? true,
     };
@@ -855,6 +1989,29 @@ async function collectStartAnswers(args) {
     }),
   );
 
+  const profile = await prompt(
+    select({
+      initialValue: inferProfileFromArgs(args) || "full",
+      message: "Startup profile?",
+      options: [
+        { label: "Full stack", value: "full" },
+        { label: "Backend only", value: "backend-only" },
+        { label: "Frontend only", value: "frontend-only" },
+        { label: "Custom", value: "custom" },
+      ],
+    }),
+  );
+
+  if (profile !== "custom") {
+    return {
+      directory,
+      installDependencies,
+      profile,
+      selectedServices: profileToServices(profile),
+      startInfra,
+    };
+  }
+
   const api = await prompt(
     confirm({
       initialValue: args.api ?? true,
@@ -883,13 +2040,58 @@ async function collectStartAnswers(args) {
   return {
     directory,
     installDependencies,
+    profile: "custom",
     selectedServices: [api && "api", worker && "worker", realtime && "realtime", admin && "admin"].filter(Boolean),
     startInfra,
   };
 }
 
 function buildSelectedServices(args) {
-  return [args.api !== false && "api", args.worker !== false && "worker", args.realtime !== false && "realtime", args.admin !== false && "admin"].filter(Boolean);
+  if (args.profile) {
+    return applyServiceOverrides(profileToServices(args.profile), args);
+  }
+
+  return applyServiceOverrides(profileToServices("full"), args);
+}
+
+function inferProfileFromArgs(args) {
+  const selected = [args.api !== false && "api", args.worker !== false && "worker", args.realtime !== false && "realtime", args.admin !== false && "admin"].filter(Boolean);
+
+  if (selected.length === 4) {
+    return "full";
+  }
+
+  if (arraysEqual(selected, profileToServices("backend-only"))) {
+    return "backend-only";
+  }
+
+  if (arraysEqual(selected, profileToServices("frontend-only"))) {
+    return "frontend-only";
+  }
+
+  return undefined;
+}
+
+function profileToServices(profile) {
+  switch (profile) {
+    case "backend-only":
+      return ["api", "worker", "realtime"];
+    case "frontend-only":
+      return ["admin"];
+    case "custom":
+      return [];
+    case "full":
+    default:
+      return ["api", "worker", "realtime", "admin"];
+  }
+}
+
+function applyServiceOverrides(services, args) {
+  return services.filter((service) => args[service] !== false);
+}
+
+function arraysEqual(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 async function ensureProjectStructure(projectDir) {
@@ -945,9 +2147,10 @@ async function loadRuntimeConfig(projectDir) {
   return { ports };
 }
 
-function printStartSummary(projectDir, runtimeConfig, selectedServices) {
+function printStartSummary(projectDir, runtimeConfig, profile, selectedServices) {
   console.log(pc.green("\nStarting project services."));
   console.log(`- Directory: ${pc.bold(projectDir)}`);
+  console.log(`- Profile: ${pc.bold(profile)}`);
   console.log(`- Services: ${pc.bold(selectedServices.join(", "))}`);
   console.log(`- Admin URL: ${pc.bold(`http://localhost:${runtimeConfig.ports.admin}`)}`);
   console.log(`- API URL: ${pc.bold(`http://localhost:${runtimeConfig.ports.api}/api/v1`)}`);
@@ -1124,6 +2327,23 @@ async function runCommand(command, args, cwd) {
     cwd,
     stdio: "inherit",
   });
+}
+
+async function checkCommand(spec) {
+  try {
+    const result = await execa(spec.command, spec.args, {
+      reject: false,
+    });
+
+    if (result.exitCode !== 0) {
+      return { message: `${spec.name} unavailable`, ok: false };
+    }
+
+    const version = (result.stdout || result.stderr || "").split(/\r?\n/)[0].trim();
+    return { message: `${spec.name} detected${version ? ` (${version})` : ""}`, ok: true };
+  } catch {
+    return { message: `${spec.name} unavailable`, ok: false };
+  }
 }
 
 async function readEnvFile(filePath) {
