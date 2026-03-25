@@ -24,6 +24,28 @@ const EXCLUDED_TEMPLATE_PATHS = ["cli"];
 const RAILWAY_GRAPHQL_ENDPOINT = "https://backboard.railway.com/graphql/v2";
 const RAILWAY_MANIFEST_FILENAME = "asaje.railway.json";
 const DEFAULT_RAILWAY_BUCKET = "boilerplate-files";
+const RAILWAY_SERVICE_DISCOVERY_RETRY_DELAY_MS = 2000;
+const RAILWAY_SERVICE_DISCOVERY_RETRY_COUNT = 5;
+const RAILWAY_APP_SERVICE_SPECS = [
+  {
+    aliases: ["api", "backend", "server"],
+    directory: "api",
+    key: "api",
+    serviceName: "api",
+  },
+  {
+    aliases: ["admin", "frontend", "web"],
+    directory: "admin",
+    key: "admin",
+    serviceName: "admin",
+  },
+  {
+    aliases: ["realtime-gateway", "realtime"],
+    directory: "realtime-gateway",
+    key: "realtime",
+    serviceName: "realtime-gateway",
+  },
+];
 const ENV_FILE_SPECS = [
   { envPath: "admin/.env", examplePath: "admin/.env.example" },
   { envPath: "api/.env", examplePath: "api/.env.example" },
@@ -903,7 +925,9 @@ async function runSetupRailway(argv) {
   const railwayContext = await loadRailwayContext(projectDir, answers.environment);
   railwayContext.environmentRef = answers.environment || railwayContext.environmentId || railwayContext.environmentName;
   const existingServices = await discoverRailwayServices(railwayContext, projectDir);
-  const summary = [];
+  const resourceSummary = [];
+  const appServiceSummary = [];
+  const deploySummary = [];
   const variableSummary = [];
 
   console.log(pc.bold("\nProvisioning"));
@@ -918,11 +942,11 @@ async function runSetupRailway(argv) {
     projectDir,
     railwayContext,
   });
-  summary.push(postgresResult);
+  resourceSummary.push(postgresResult);
 
   const rabbitMqResult = await ensureRailwayResource({
     aliases: ["rabbitmq"],
-    commandArgs: ["deploy", "--template", "rabbitmq"],
+    commandArgs: ["deploy", "--template", "RabbitMQ"],
     dryRun: answers.dryRun,
     existingServices,
     key: "rabbitmq",
@@ -930,7 +954,7 @@ async function runSetupRailway(argv) {
     projectDir,
     railwayContext,
   });
-  summary.push(rabbitMqResult);
+  resourceSummary.push(rabbitMqResult);
 
   const objectStorageResult = await ensureRailwayResource({
     aliases: ["object-storage", "storage", "simple-s3", "minio"],
@@ -949,10 +973,25 @@ async function runSetupRailway(argv) {
     projectDir,
     railwayContext,
   });
-  summary.push(objectStorageResult);
+  resourceSummary.push(objectStorageResult);
+
+  console.log(pc.bold("\nApplication services"));
+  manifest.appServices ||= {};
+  for (const spec of RAILWAY_APP_SERVICE_SPECS) {
+    const serviceResult = await ensureRailwayAppService({
+      aliases: spec.aliases,
+      dryRun: answers.dryRun,
+      existingServices,
+      key: spec.key,
+      manifest,
+      projectDir,
+      railwayContext,
+      serviceName: spec.serviceName,
+    });
+    appServiceSummary.push(serviceResult);
+  }
 
   manifest.bucket = answers.bucket;
-  manifest.appServices ||= {};
   manifest.environmentId = railwayContext.environmentId || manifest.environmentId || null;
   manifest.environmentName = railwayContext.environmentName || manifest.environmentName || null;
   manifest.projectId = railwayContext.projectId || manifest.projectId || null;
@@ -969,11 +1008,28 @@ async function runSetupRailway(argv) {
     services: servicesAfterProvision,
     summary: variableSummary,
   });
+  const deploymentResults = await deployRailwayAppServices({
+    dryRun: answers.dryRun,
+    manifest,
+    projectDir,
+    railwayContext,
+    services: servicesAfterProvision,
+  });
+  deploySummary.push(...deploymentResults);
 
   if (!answers.dryRun) {
     await writeRailwayManifest(projectDir, manifest);
   }
-  printRailwaySetupSummary(projectDir, railwayContext, summary, variableSummary, answers.bucket, answers.dryRun);
+  printRailwaySetupSummary({
+    appServiceSummary,
+    bucket: answers.bucket,
+    deploySummary,
+    dryRun: answers.dryRun,
+    projectDir,
+    railwayContext,
+    resourceSummary,
+    variableSummary,
+  });
 }
 
 async function runSyncRailwayEnv(argv) {
@@ -1015,14 +1071,16 @@ async function runSyncRailwayEnv(argv) {
     await writeRailwayManifest(projectDir, manifest);
   }
 
-  printRailwaySetupSummary(
+  printRailwaySetupSummary({
+    appServiceSummary: [],
+    bucket: manifest.bucket || answers.bucket,
+    deploySummary: [],
+    dryRun: answers.dryRun,
     projectDir,
     railwayContext,
-    [],
+    resourceSummary: [],
     variableSummary,
-    manifest.bucket || answers.bucket,
-    answers.dryRun,
-  );
+  });
 }
 
 function parseDirectoryArgs(argv) {
@@ -1344,33 +1402,134 @@ async function ensureRailwayResource(config) {
   }
 
   if (manifestEntry?.status === "created" || manifestEntry?.status === "existing") {
-    console.log(`- ${pc.cyan(config.key)} already tracked in ${RAILWAY_MANIFEST_FILENAME}`);
-    return {
-      key: config.key,
-      serviceName: manifestEntry.serviceName || null,
-      status: "tracked",
-    };
+    console.log(`- ${pc.yellow(config.key)} tracked in ${RAILWAY_MANIFEST_FILENAME} but not found remotely, recreating...`);
   }
 
   console.log(`- creating ${pc.cyan(config.key)}...`);
+  const servicesBefore = normalizeRailwayServices(config.existingServices);
   if (!config.dryRun) {
     await runRailwayCommand(config.projectDir, config.railwayContext.environmentRef, config.commandArgs);
+  }
+
+  let createdService = null;
+  if (!config.dryRun) {
+    createdService = await waitForCreatedRailwayService({
+      aliases: config.aliases,
+      beforeServices: servicesBefore,
+      key: config.key,
+      manifestEntry,
+      projectDir: config.projectDir,
+      railwayContext: config.railwayContext,
+    });
   }
 
   config.manifest.resources[config.key] = {
     bucket: config.metadata?.bucket || null,
     detectedAt: new Date().toISOString(),
-    serviceId: null,
-    serviceName: null,
+    serviceId: createdService?.id || null,
+    serviceName: createdService?.name || null,
     source: "cli",
     status: "created",
   };
 
   return {
     key: config.key,
-    serviceName: null,
+    serviceName: createdService?.name || null,
     status: config.dryRun ? "dry-run" : "created",
   };
+}
+
+async function ensureRailwayAppService(config) {
+  const manifestEntry = config.manifest.appServices?.[config.key];
+  const existingService = findRailwayService(
+    config.existingServices,
+    config.aliases,
+    manifestEntry?.serviceName || config.serviceName,
+  );
+
+  if (existingService) {
+    config.manifest.appServices[config.key] = {
+      serviceId: existingService.id || manifestEntry?.serviceId || null,
+      serviceName: existingService.name || manifestEntry?.serviceName || config.serviceName,
+    };
+
+    console.log(`- ${pc.cyan(config.serviceName)} already present${existingService.name ? ` (${existingService.name})` : ""}`);
+    return {
+      key: config.serviceName,
+      serviceName: existingService.name || config.serviceName,
+      status: "existing",
+    };
+  }
+
+  if (manifestEntry?.serviceName) {
+    console.log(`- ${pc.yellow(config.serviceName)} tracked in ${RAILWAY_MANIFEST_FILENAME} but not found remotely, recreating...`);
+  }
+
+  console.log(`- creating ${pc.cyan(config.serviceName)} service...`);
+  const servicesBefore = normalizeRailwayServices(config.existingServices);
+  if (!config.dryRun) {
+    await runRailwayCommand(config.projectDir, config.railwayContext.environmentRef, ["add", "--service", config.serviceName]);
+  }
+
+  let createdService = null;
+  if (!config.dryRun) {
+    createdService = await waitForCreatedRailwayService({
+      aliases: config.aliases,
+      beforeServices: servicesBefore,
+      key: config.serviceName,
+      manifestEntry,
+      projectDir: config.projectDir,
+      railwayContext: config.railwayContext,
+    });
+  }
+
+  config.manifest.appServices[config.key] = {
+    serviceId: createdService?.id || null,
+    serviceName: createdService?.name || config.serviceName,
+  };
+
+  return {
+    key: config.serviceName,
+    serviceName: createdService?.name || config.serviceName,
+    status: config.dryRun ? "dry-run" : "created",
+  };
+}
+
+async function deployRailwayAppServices(config) {
+  console.log(pc.bold("\nDeployments"));
+
+  const summary = [];
+  for (const spec of RAILWAY_APP_SERVICE_SPECS) {
+    const manifestEntry = config.manifest.appServices?.[spec.key];
+    const service = findRailwayService(config.services, spec.aliases, manifestEntry?.serviceName || spec.serviceName);
+    const targetServiceName = service?.name || manifestEntry?.serviceName || spec.serviceName;
+
+    if (!service && !config.dryRun) {
+      console.log(`- ${pc.yellow(spec.serviceName)} service not found, skipping deployment`);
+      continue;
+    }
+
+    if (config.dryRun) {
+      console.log(`- would deploy ${pc.cyan(targetServiceName)} from ${spec.directory}/`);
+      summary.push({ directory: spec.directory, serviceName: targetServiceName, status: "dry-run" });
+      continue;
+    }
+
+    console.log(`- deploying ${pc.cyan(targetServiceName)} from ${spec.directory}/...`);
+    await runRailwayCommand(config.projectDir, config.railwayContext.environmentRef, [
+      "up",
+      spec.directory,
+      "--service",
+      targetServiceName,
+      "--path-as-root",
+      "--detach",
+      "--message",
+      `asaje setup-railway: deploy ${targetServiceName}`,
+    ]);
+    summary.push({ directory: spec.directory, serviceName: targetServiceName, status: "deployed" });
+  }
+
+  return summary;
 }
 
 async function wireRailwayVariables(config) {
@@ -1415,6 +1574,15 @@ async function wireRailwayVariables(config) {
   }
   if (!appServices.admin) {
     console.log(`- ${pc.yellow("admin")} service not found, skipping admin variable wiring`);
+  }
+  if (!infra.postgres) {
+    console.log(`- ${pc.yellow("postgres")} resource not found, DATABASE_URL wiring will be skipped`);
+  }
+  if (!infra.rabbitmq) {
+    console.log(`- ${pc.yellow("rabbitmq")} resource not found, RABBITMQ_URL wiring will be skipped`);
+  }
+  if (!infra.objectStorage) {
+    console.log(`- ${pc.yellow("object-storage")} resource not found, S3 variable wiring will be skipped`);
   }
 
   if (appServices.api) {
@@ -1648,6 +1816,30 @@ async function loadRailwayServiceVariables(projectDir, environment, serviceName)
   }
 }
 
+async function waitForCreatedRailwayService(config) {
+  for (let attempt = 0; attempt < RAILWAY_SERVICE_DISCOVERY_RETRY_COUNT; attempt += 1) {
+    const servicesAfter = await discoverRailwayServices(config.railwayContext, config.projectDir);
+    const createdService = findCreatedRailwayService({
+      aliases: config.aliases,
+      beforeServices: config.beforeServices,
+      manifestServiceName: config.manifestEntry?.serviceName,
+      servicesAfter,
+    });
+
+    if (createdService) {
+      return createdService;
+    }
+
+    if (attempt < RAILWAY_SERVICE_DISCOVERY_RETRY_COUNT - 1) {
+      await sleep(RAILWAY_SERVICE_DISCOVERY_RETRY_DELAY_MS);
+    }
+  }
+
+  throw new Error(
+    `Railway command for ${config.key} finished but the new service was not detected afterwards. Check the Railway dashboard/logs, then rerun \`asaje setup-railway\` or \`asaje sync-railway-env\` once the service appears.`,
+  );
+}
+
 function findRailwayService(services, aliases, preferredName) {
   if (preferredName) {
     const exact = services.find(
@@ -1694,6 +1886,32 @@ function normalizeRailwayServices(services) {
   }
 
   return normalized;
+}
+
+function findCreatedRailwayService(config) {
+  const beforeServices = normalizeRailwayServices(config.beforeServices);
+  const afterServices = normalizeRailwayServices(config.servicesAfter);
+  const beforeKeys = new Set(beforeServices.map(createRailwayServiceIdentity));
+  const newServices = afterServices.filter((service) => !beforeKeys.has(createRailwayServiceIdentity(service)));
+
+  if (newServices.length === 1) {
+    return newServices[0];
+  }
+
+  const aliasMatch = findRailwayService(newServices, config.aliases, config.manifestServiceName);
+  if (aliasMatch) {
+    return aliasMatch;
+  }
+
+  return null;
+}
+
+function createRailwayServiceIdentity(service) {
+  if (service?.id) {
+    return `id:${service.id}`;
+  }
+
+  return `name:${normalizeRailwayServiceName(service?.name)}`;
 }
 
 function normalizeRailwayVariables(input) {
@@ -1778,6 +1996,12 @@ function visitRailwayJson(input, visitor) {
   }
 }
 
+function sleep(delayMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
 async function runRailwayCommand(projectDir, environment, args) {
   const result = await execa("railway", buildRailwayArgs(args, environment), {
     cwd: projectDir,
@@ -1840,33 +2064,56 @@ function findFirstNestedValue(input, key) {
   return null;
 }
 
-function printRailwaySetupSummary(projectDir, railwayContext, summary, variableSummary, bucket, dryRun) {
+function printRailwaySetupSummary(config) {
   console.log(pc.bold("\nRailway"));
-  console.log(`- Directory: ${pc.bold(projectDir)}`);
-  if (railwayContext.projectName || railwayContext.projectId) {
-    console.log(`- Project: ${pc.bold(railwayContext.projectName || railwayContext.projectId)}`);
+  console.log(`- Directory: ${pc.bold(config.projectDir)}`);
+  if (config.railwayContext.projectName || config.railwayContext.projectId) {
+    console.log(`- Project: ${pc.bold(config.railwayContext.projectName || config.railwayContext.projectId)}`);
   }
-  if (railwayContext.environmentName || railwayContext.environmentId) {
-    console.log(`- Environment: ${pc.bold(railwayContext.environmentName || railwayContext.environmentId)}`);
+  if (config.railwayContext.environmentName || config.railwayContext.environmentId) {
+    console.log(`- Environment: ${pc.bold(config.railwayContext.environmentName || config.railwayContext.environmentId)}`);
   }
-  console.log(`- Bucket: ${pc.bold(bucket)}`);
+  console.log(`- Bucket: ${pc.bold(config.bucket)}`);
 
   console.log(pc.bold("\nResources"));
-  for (const item of summary) {
-    const detail = item.serviceName ? ` (${item.serviceName})` : "";
-    console.log(`- ${pc.bold(item.key)}: ${item.status}${detail}`);
+  if (config.resourceSummary.length === 0) {
+    console.log("- No infrastructure resources were changed");
+  } else {
+    for (const item of config.resourceSummary) {
+      const detail = item.serviceName ? ` (${item.serviceName})` : "";
+      console.log(`- ${pc.bold(item.key)}: ${item.status}${detail}`);
+    }
+  }
+
+  console.log(pc.bold("\nApplication services"));
+  if (config.appServiceSummary.length === 0) {
+    console.log("- No application services were changed");
+  } else {
+    for (const item of config.appServiceSummary) {
+      const detail = item.serviceName ? ` (${item.serviceName})` : "";
+      console.log(`- ${pc.bold(item.key)}: ${item.status}${detail}`);
+    }
+  }
+
+  console.log(pc.bold("\nDeployments"));
+  if (config.deploySummary.length === 0) {
+    console.log("- No application deployments were triggered");
+  } else {
+    for (const item of config.deploySummary) {
+      console.log(`- ${pc.bold(item.serviceName)}: ${item.status} from ${item.directory}/`);
+    }
   }
 
   console.log(pc.bold("\nVariables"));
-  if (variableSummary.length === 0) {
+  if (config.variableSummary.length === 0) {
     console.log("- No application variables were updated");
   } else {
-    for (const item of variableSummary) {
+    for (const item of config.variableSummary) {
       console.log(`- ${pc.bold(item.serviceName)}: ${item.status} ${item.keys.join(", ")}`);
     }
   }
 
-  if (dryRun) {
+  if (config.dryRun) {
     console.log(`- Dry run only, ${pc.bold(RAILWAY_MANIFEST_FILENAME)} was not written`);
   } else {
     console.log(`- Manifest written to ${pc.bold(RAILWAY_MANIFEST_FILENAME)} for future runs`);
