@@ -27,6 +27,7 @@ func New(authService appauth.Service, registry *apprealtime.Registry, cfg config
 	engine.Use(cors.New(corsConfig))
 
 	handler := handlers.NewRealtimeHandler(authService, registry, cfg)
+	engine.GET("/", handler.Health)
 	engine.GET("/health", handler.Health)
 	engine.GET("/rt/sse", handler.SSE)
 	engine.GET("/rt/ws", handler.WebSocket)

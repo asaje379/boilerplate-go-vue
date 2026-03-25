@@ -1,1169 +1,1964 @@
 {
-	"swagger": "2.0",
-	"info": {
-		"description": "API server built with Gin, Gorm, Postgres, JWT auth, refresh tokens, and Swaggo.",
-		"title": "Boilerplate Go Vue API",
-		"contact": {},
-		"version": "1.0"
-	},
-	"basePath": "/",
-	"paths": {
-		"/api/v1/auth/forgot-password": {
-			"post": {
-				"description": "Sends a password reset OTP by email if the account exists.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["auth"],
-				"summary": "Forgot password",
-				"parameters": [
-					{
-						"description": "Forgot password payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.ForgotPasswordRequest"
-						}
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "No Content"
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/auth/login": {
-			"post": {
-				"description": "Authenticates a user and sends a 2FA OTP by email.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["auth"],
-				"summary": "Login",
-				"parameters": [
-					{
-						"description": "Login payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.LoginRequest"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/handlers.LoginChallengeResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/auth/logout": {
-			"post": {
-				"description": "Revokes a refresh token.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["auth"],
-				"summary": "Logout",
-				"parameters": [
-					{
-						"description": "Logout payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.RefreshRequest"
-						}
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "No Content"
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/auth/refresh": {
-			"post": {
-				"description": "Rotates the refresh token and returns a new token pair.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["auth"],
-				"summary": "Refresh tokens",
-				"parameters": [
-					{
-						"description": "Refresh payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.RefreshRequest"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/handlers.AuthResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/auth/register": {
-			"post": {
-				"description": "Creates a user account. Role defaults to `user`.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["auth"],
-				"summary": "Register a user",
-				"parameters": [
-					{
-						"description": "Register payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.RegisterRequest"
-						}
-					}
-				],
-				"responses": {
-					"201": {
-						"description": "Created",
-						"schema": {
-							"$ref": "#/definitions/presenter.UserResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/auth/reset-password": {
-			"post": {
-				"description": "Resets the password using the OTP sent by email.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["auth"],
-				"summary": "Reset password",
-				"parameters": [
-					{
-						"description": "Reset password payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.ResetPasswordRequest"
-						}
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "No Content"
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/auth/verify-otp": {
-			"post": {
-				"description": "Verifies the login 2FA OTP and returns JWT tokens.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["auth"],
-				"summary": "Verify email OTP",
-				"parameters": [
-					{
-						"description": "Verify login OTP payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.VerifyLoginOTPRequest"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/handlers.AuthResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/files": {
-			"get": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Returns uploaded files. Admin sees all, users see only their files.",
-				"produces": ["application/json"],
-				"tags": ["files"],
-				"summary": "List files",
-				"parameters": [
-					{
-						"type": "integer",
-						"description": "Page number",
-						"name": "page",
-						"in": "query"
-					},
-					{
-						"type": "integer",
-						"description": "Page size",
-						"name": "limit",
-						"in": "query"
-					},
-					{
-						"type": "string",
-						"description": "Search on name, content type, provider, visibility",
-						"name": "search",
-						"in": "query"
-					},
-					{
-						"enum": ["createdAt", "updatedAt", "name", "provider", "size"],
-						"type": "string",
-						"description": "Sort field",
-						"name": "sortBy",
-						"in": "query"
-					},
-					{
-						"enum": ["asc", "desc"],
-						"type": "string",
-						"description": "Sort order",
-						"name": "sortOrder",
-						"in": "query"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/presenter.PaginatedFilesResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/files/public/{id}/download": {
-			"get": {
-				"description": "Redirects to the public file URL if the file visibility is public.",
-				"tags": ["files"],
-				"summary": "Public file download",
-				"parameters": [
-					{
-						"type": "string",
-						"description": "File ID",
-						"name": "id",
-						"in": "path",
-						"required": true
-					}
-				],
-				"responses": {
-					"302": {
-						"description": "Found"
-					},
-					"403": {
-						"description": "Forbidden",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"404": {
-						"description": "Not Found",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/files/upload": {
-			"post": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Uploads a file to object storage and stores metadata in database.",
-				"consumes": ["multipart/form-data"],
-				"produces": ["application/json"],
-				"tags": ["files"],
-				"summary": "Upload a file",
-				"parameters": [
-					{
-						"type": "file",
-						"description": "File binary",
-						"name": "file",
-						"in": "formData",
-						"required": true
-					},
-					{
-						"type": "string",
-						"description": "Optional storage path prefix inside the configured bucket base path",
-						"name": "path",
-						"in": "formData"
-					},
-					{
-						"enum": ["private", "public"],
-						"type": "string",
-						"description": "private or public",
-						"name": "visibility",
-						"in": "formData"
-					}
-				],
-				"responses": {
-					"201": {
-						"description": "Created",
-						"schema": {
-							"$ref": "#/definitions/handlers.UploadFileResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/files/{id}": {
-			"get": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Returns file metadata if the caller is owner or admin.",
-				"produces": ["application/json"],
-				"tags": ["files"],
-				"summary": "Get file metadata",
-				"parameters": [
-					{
-						"type": "string",
-						"description": "File ID",
-						"name": "id",
-						"in": "path",
-						"required": true
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/presenter.FileResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"404": {
-						"description": "Not Found",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			},
-			"delete": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Deletes the object from storage and removes its metadata.",
-				"produces": ["application/json"],
-				"tags": ["files"],
-				"summary": "Delete a file",
-				"parameters": [
-					{
-						"type": "string",
-						"description": "File ID",
-						"name": "id",
-						"in": "path",
-						"required": true
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "No Content"
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"404": {
-						"description": "Not Found",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/files/{id}/download-signed": {
-			"get": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Returns a temporary signed URL for downloading a file.",
-				"produces": ["application/json"],
-				"tags": ["files"],
-				"summary": "Get signed download URL",
-				"parameters": [
-					{
-						"type": "string",
-						"description": "File ID",
-						"name": "id",
-						"in": "path",
-						"required": true
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/presenter.SignedDownloadResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"404": {
-						"description": "Not Found",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/health": {
-			"get": {
-				"description": "Returns API and Postgres health.",
-				"produces": ["application/json"],
-				"tags": ["health"],
-				"summary": "Health check",
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/handlers.HealthResponse"
-						}
-					},
-					"503": {
-						"description": "Service Unavailable",
-						"schema": {
-							"$ref": "#/definitions/handlers.HealthResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/users": {
-			"get": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Returns all users. Admin only.",
-				"produces": ["application/json"],
-				"tags": ["users"],
-				"summary": "List users",
-				"parameters": [
-					{
-						"type": "integer",
-						"description": "Page number",
-						"name": "page",
-						"in": "query"
-					},
-					{
-						"type": "integer",
-						"description": "Page size",
-						"name": "limit",
-						"in": "query"
-					},
-					{
-						"type": "string",
-						"description": "Search on name, email, role",
-						"name": "search",
-						"in": "query"
-					},
-					{
-						"enum": ["createdAt", "updatedAt", "name", "email", "role"],
-						"type": "string",
-						"description": "Sort field",
-						"name": "sortBy",
-						"in": "query"
-					},
-					{
-						"enum": ["asc", "desc"],
-						"type": "string",
-						"description": "Sort order",
-						"name": "sortOrder",
-						"in": "query"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/presenter.PaginatedUsersResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/users/me": {
-			"get": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Returns the authenticated user profile.",
-				"produces": ["application/json"],
-				"tags": ["users"],
-				"summary": "Current user",
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/presenter.UserResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"404": {
-						"description": "Not Found",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/users/me/profile-photo": {
-			"patch": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Assigns or clears the authenticated user's profile photo using an uploaded file id.",
-				"consumes": ["application/json"],
-				"produces": ["application/json"],
-				"tags": ["users"],
-				"summary": "Update current user profile photo",
-				"parameters": [
-					{
-						"description": "Profile photo payload",
-						"name": "payload",
-						"in": "body",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/handlers.UpdateProfilePhotoRequest"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/presenter.UserResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"404": {
-						"description": "Not Found",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		},
-		"/api/v1/users/{id}": {
-			"get": {
-				"security": [
-					{
-						"BearerAuth": []
-					}
-				],
-				"description": "Returns a single user by id. Admin only.",
-				"produces": ["application/json"],
-				"tags": ["users"],
-				"summary": "Get user by ID",
-				"parameters": [
-					{
-						"type": "string",
-						"description": "User ID",
-						"name": "id",
-						"in": "path",
-						"required": true
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"$ref": "#/definitions/presenter.UserResponse"
-						}
-					},
-					"400": {
-						"description": "Bad Request",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"401": {
-						"description": "Unauthorized",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					},
-					"404": {
-						"description": "Not Found",
-						"schema": {
-							"$ref": "#/definitions/handlers.ErrorResponse"
-						}
-					}
-				}
-			}
-		}
-	},
-	"definitions": {
-		"file.Visibility": {
-			"type": "string",
-			"enum": ["private", "public"],
-			"x-enum-varnames": ["VisibilityPrivate", "VisibilityPublic"]
-		},
-		"handlers.AuthResponse": {
-			"type": "object",
-			"properties": {
-				"accessToken": {
-					"type": "string"
-				},
-				"expiresAt": {
-					"type": "string",
-					"example": "2026-03-16T18:00:00Z"
-				},
-				"refreshToken": {
-					"type": "string"
-				},
-				"user": {
-					"$ref": "#/definitions/presenter.UserResponse"
-				}
-			}
-		},
-		"handlers.ErrorResponse": {
-			"type": "object",
-			"properties": {
-				"error": {
-					"type": "string",
-					"example": "validation error"
-				}
-			}
-		},
-		"handlers.ForgotPasswordRequest": {
-			"type": "object",
-			"required": ["email"],
-			"properties": {
-				"email": {
-					"type": "string",
-					"example": "jane@example.com"
-				}
-			}
-		},
-		"handlers.HealthResponse": {
-			"type": "object",
-			"properties": {
-				"services": {
-					"type": "object",
-					"additionalProperties": {
-						"$ref": "#/definitions/handlers.ServiceInfo"
-					}
-				},
-				"status": {
-					"type": "string",
-					"example": "ok"
-				}
-			}
-		},
-		"handlers.LoginChallengeResponse": {
-			"type": "object",
-			"properties": {
-				"email": {
-					"type": "string"
-				},
-				"message": {
-					"type": "string"
-				},
-				"otpExpiresAt": {
-					"type": "string"
-				}
-			}
-		},
-		"handlers.LoginRequest": {
-			"type": "object",
-			"required": ["email", "password"],
-			"properties": {
-				"email": {
-					"type": "string",
-					"example": "jane@example.com"
-				},
-				"password": {
-					"type": "string",
-					"example": "supersecret"
-				}
-			}
-		},
-		"handlers.RefreshRequest": {
-			"type": "object",
-			"required": ["refreshToken"],
-			"properties": {
-				"refreshToken": {
-					"type": "string"
-				}
-			}
-		},
-		"handlers.RegisterRequest": {
-			"type": "object",
-			"required": ["email", "name", "password"],
-			"properties": {
-				"email": {
-					"type": "string",
-					"example": "jane@example.com"
-				},
-				"name": {
-					"type": "string",
-					"example": "Jane Doe"
-				},
-				"password": {
-					"type": "string",
-					"minLength": 8,
-					"example": "supersecret"
-				},
-				"preferredLocale": {
-					"type": "string",
-					"enum": ["fr", "en"],
-					"example": "fr"
-				}
-			}
-		},
-		"handlers.ResetPasswordRequest": {
-			"type": "object",
-			"required": ["email", "newPassword", "otp"],
-			"properties": {
-				"email": {
-					"type": "string",
-					"example": "jane@example.com"
-				},
-				"newPassword": {
-					"type": "string",
-					"minLength": 8,
-					"example": "newsecret123"
-				},
-				"otp": {
-					"type": "string",
-					"example": "123456"
-				}
-			}
-		},
-		"handlers.ServiceInfo": {
-			"type": "object",
-			"properties": {
-				"message": {
-					"type": "string",
-					"example": "postgres responding"
-				},
-				"status": {
-					"type": "string",
-					"example": "up"
-				}
-			}
-		},
-		"handlers.UpdateProfilePhotoRequest": {
-			"type": "object",
-			"properties": {
-				"fileId": {
-					"type": "string"
-				}
-			}
-		},
-		"handlers.UploadFileResponse": {
-			"type": "object",
-			"properties": {
-				"file": {
-					"$ref": "#/definitions/presenter.FileResponse"
-				}
-			}
-		},
-		"handlers.VerifyLoginOTPRequest": {
-			"type": "object",
-			"required": ["email", "otp"],
-			"properties": {
-				"email": {
-					"type": "string",
-					"example": "jane@example.com"
-				},
-				"otp": {
-					"type": "string",
-					"example": "123456"
-				}
-			}
-		},
-		"presenter.FileResponse": {
-			"type": "object",
-			"properties": {
-				"bucket": {
-					"type": "string"
-				},
-				"contentType": {
-					"type": "string"
-				},
-				"createdAt": {
-					"type": "string"
-				},
-				"id": {
-					"type": "string"
-				},
-				"originalName": {
-					"type": "string"
-				},
-				"provider": {
-					"type": "string",
-					"enum": ["aws", "minio"],
-					"example": "aws"
-				},
-				"sizeBytes": {
-					"type": "integer"
-				},
-				"storageKey": {
-					"type": "string"
-				},
-				"storedName": {
-					"type": "string"
-				},
-				"updatedAt": {
-					"type": "string"
-				},
-				"uploadedById": {
-					"type": "string"
-				},
-				"visibility": {
-					"enum": ["private", "public"],
-					"allOf": [
-						{
-							"$ref": "#/definitions/file.Visibility"
-						}
-					],
-					"example": "private"
-				}
-			}
-		},
-		"presenter.PaginatedFilesResponse": {
-			"type": "object",
-			"properties": {
-				"items": {
-					"type": "array",
-					"items": {
-						"$ref": "#/definitions/presenter.FileResponse"
-					}
-				},
-				"meta": {
-					"$ref": "#/definitions/presenter.PaginationMetaResponse"
-				}
-			}
-		},
-		"presenter.PaginatedUsersResponse": {
-			"type": "object",
-			"properties": {
-				"items": {
-					"type": "array",
-					"items": {
-						"$ref": "#/definitions/presenter.UserResponse"
-					}
-				},
-				"meta": {
-					"$ref": "#/definitions/presenter.PaginationMetaResponse"
-				}
-			}
-		},
-		"presenter.PaginationMetaResponse": {
-			"type": "object",
-			"properties": {
-				"limit": {
-					"type": "integer"
-				},
-				"page": {
-					"type": "integer"
-				},
-				"search": {
-					"type": "string"
-				},
-				"sortBy": {
-					"type": "string"
-				},
-				"sortOrder": {
-					"type": "string"
-				},
-				"total": {
-					"type": "integer"
-				},
-				"totalPages": {
-					"type": "integer"
-				}
-			}
-		},
-		"presenter.SignedDownloadResponse": {
-			"type": "object",
-			"properties": {
-				"file": {
-					"$ref": "#/definitions/presenter.FileResponse"
-				},
-				"url": {
-					"type": "string"
-				}
-			}
-		},
-		"presenter.UserResponse": {
-			"type": "object",
-			"properties": {
-				"createdAt": {
-					"type": "string"
-				},
-				"email": {
-					"type": "string"
-				},
-				"id": {
-					"type": "string"
-				},
-				"name": {
-					"type": "string"
-				},
-				"preferredLocale": {
-					"enum": ["fr", "en"],
-					"allOf": [
-						{
-							"$ref": "#/definitions/user.Locale"
-						}
-					],
-					"example": "fr"
-				},
-				"profilePhotoFileId": {
-					"type": "string"
-				},
-				"profilePhotoUrl": {
-					"type": "string"
-				},
-				"role": {
-					"enum": ["admin", "user"],
-					"allOf": [
-						{
-							"$ref": "#/definitions/user.Role"
-						}
-					],
-					"example": "user"
-				},
-				"updatedAt": {
-					"type": "string"
-				}
-			}
-		},
-		"user.Locale": {
-			"type": "string",
-			"enum": ["fr", "en"],
-			"x-enum-varnames": ["LocaleFR", "LocaleEN"]
-		},
-		"user.Role": {
-			"type": "string",
-			"enum": ["admin", "user"],
-			"x-enum-varnames": ["RoleAdmin", "RoleUser"]
-		}
-	},
-	"securityDefinitions": {
-		"BearerAuth": {
-			"description": "Use `Bearer \u003ctoken\u003e`.",
-			"type": "apiKey",
-			"name": "Authorization",
-			"in": "header"
-		}
-	}
+    "swagger": "2.0",
+    "info": {
+        "description": "API server built with Gin, Gorm, Postgres, JWT auth, refresh tokens, and Swaggo.",
+        "title": "Boilerplate Go Vue API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/v1/auth/bootstrap-first-admin": {
+            "post": {
+                "description": "Creates the first administrator account when the application has not been initialized yet.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Bootstrap first admin",
+                "parameters": [
+                    {
+                        "description": "Bootstrap first admin payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.BootstrapFirstAdminRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.AuthResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/forgot-password": {
+            "post": {
+                "description": "Sends a password reset OTP by email if the account exists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Forgot password",
+                "parameters": [
+                    {
+                        "description": "Forgot password payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ForgotPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/login": {
+            "post": {
+                "description": "Authenticates a user and sends a 2FA OTP by email.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Login",
+                "parameters": [
+                    {
+                        "description": "Login payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.LoginChallengeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/logout": {
+            "post": {
+                "description": "Revokes a refresh token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Logout",
+                "parameters": [
+                    {
+                        "description": "Logout payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RefreshRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/refresh": {
+            "post": {
+                "description": "Rotates the refresh token and returns a new token pair.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Refresh tokens",
+                "parameters": [
+                    {
+                        "description": "Refresh payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RefreshRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.AuthResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/register": {
+            "post": {
+                "description": "Creates a user account. Role defaults to `user`.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Register a user",
+                "parameters": [
+                    {
+                        "description": "Register payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/reset-password": {
+            "post": {
+                "description": "Resets the password using the OTP sent by email.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Reset password",
+                "parameters": [
+                    {
+                        "description": "Reset password payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ResetPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/setup-status": {
+            "get": {
+                "description": "Returns whether the application still requires creation of the first admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Setup status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SetupStatusResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/verify-otp": {
+            "post": {
+                "description": "Verifies the login 2FA OTP and returns JWT tokens.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Verify email OTP",
+                "parameters": [
+                    {
+                        "description": "Verify login OTP payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.VerifyLoginOTPRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.AuthResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns uploaded files. Admin sees all, users see only their files.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "List files",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search on name, content type, provider, visibility",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "createdAt",
+                            "updatedAt",
+                            "name",
+                            "provider",
+                            "size"
+                        ],
+                        "type": "string",
+                        "description": "Sort field",
+                        "name": "sortBy",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "description": "Sort order",
+                        "name": "sortOrder",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.PaginatedFilesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/public/{id}/download": {
+            "get": {
+                "description": "Redirects to the public file URL if the file visibility is public.",
+                "tags": [
+                    "files"
+                ],
+                "summary": "Public file download",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Found"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/upload": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uploads a file to object storage and stores metadata in database.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Upload a file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "File binary",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Optional storage path prefix inside the configured bucket base path",
+                        "name": "path",
+                        "in": "formData"
+                    },
+                    {
+                        "enum": [
+                            "private",
+                            "public"
+                        ],
+                        "type": "string",
+                        "description": "private or public",
+                        "name": "visibility",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UploadFileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns file metadata if the caller is owner or admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Get file metadata",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.FileResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deletes the object from storage and removes its metadata.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Delete a file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/files/{id}/download-signed": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a temporary signed URL for downloading a file.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "files"
+                ],
+                "summary": "Get signed download URL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.SignedDownloadResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/health": {
+            "get": {
+                "description": "Returns API and Postgres health.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.HealthResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all users. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "List users",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search on name, email, role",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "createdAt",
+                            "updatedAt",
+                            "name",
+                            "email",
+                            "role"
+                        ],
+                        "type": "string",
+                        "description": "Sort field",
+                        "name": "sortBy",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "description": "Sort order",
+                        "name": "sortOrder",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.PaginatedUsersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new user. Admin only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Create user",
+                "parameters": [
+                    {
+                        "description": "Create user payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the authenticated user profile.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Current user",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the authenticated user profile fields.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Update current user profile",
+                "parameters": [
+                    {
+                        "description": "Profile payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateCurrentProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/me/change-password": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Changes the authenticated user's password.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Change current user password",
+                "parameters": [
+                    {
+                        "description": "Change password payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ChangePasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/me/profile-photo": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Assigns or clears the authenticated user's profile photo using an uploaded file id.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Update current user profile photo",
+                "parameters": [
+                    {
+                        "description": "Profile photo payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateProfilePhotoRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/me/security": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the authenticated user's security preferences.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Update current user security settings",
+                "parameters": [
+                    {
+                        "description": "Security payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateSecurityRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single user by id. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get user by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a user. Admin only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Update user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update user payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/deactivate": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deactivates a user. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Deactivate user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/reactivate": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reactivates a user. Admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Reactivate user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/presenter.UserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "file.Visibility": {
+            "type": "string",
+            "enum": [
+                "private",
+                "public"
+            ],
+            "x-enum-varnames": [
+                "VisibilityPrivate",
+                "VisibilityPublic"
+            ]
+        },
+        "handlers.AuthResponse": {
+            "type": "object",
+            "properties": {
+                "accessToken": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "example": "2026-03-16T18:00:00Z"
+                },
+                "refreshToken": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/presenter.UserResponse"
+                }
+            }
+        },
+        "handlers.BootstrapFirstAdminRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Jane Doe"
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "example": "supersecret123"
+                },
+                "preferredLocale": {
+                    "type": "string",
+                    "enum": [
+                        "fr",
+                        "en"
+                    ],
+                    "example": "fr"
+                }
+            }
+        },
+        "handlers.ChangePasswordRequest": {
+            "type": "object",
+            "required": [
+                "currentPassword",
+                "newPassword"
+            ],
+            "properties": {
+                "currentPassword": {
+                    "type": "string"
+                },
+                "newPassword": {
+                    "type": "string",
+                    "minLength": 8
+                }
+            }
+        },
+        "handlers.CreateUserRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name",
+                "password",
+                "preferredLocale",
+                "role"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "mustChangePassword": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 8
+                },
+                "preferredLocale": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "validation error"
+                }
+            }
+        },
+        "handlers.ForgotPasswordRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                }
+            }
+        },
+        "handlers.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "services": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/handlers.ServiceInfo"
+                    }
+                },
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        },
+        "handlers.LoginChallengeResponse": {
+            "type": "object",
+            "properties": {
+                "accessToken": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string",
+                    "example": "2026-03-16T18:00:00Z"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "otpExpiresAt": {
+                    "type": "string"
+                },
+                "refreshToken": {
+                    "type": "string"
+                },
+                "requiresOtp": {
+                    "type": "boolean"
+                },
+                "user": {
+                    "$ref": "#/definitions/presenter.UserResponse"
+                }
+            }
+        },
+        "handlers.LoginRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                },
+                "password": {
+                    "type": "string",
+                    "example": "supersecret"
+                }
+            }
+        },
+        "handlers.RefreshRequest": {
+            "type": "object",
+            "required": [
+                "refreshToken"
+            ],
+            "properties": {
+                "refreshToken": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.RegisterRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Jane Doe"
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "example": "supersecret"
+                },
+                "preferredLocale": {
+                    "type": "string",
+                    "enum": [
+                        "fr",
+                        "en"
+                    ],
+                    "example": "fr"
+                }
+            }
+        },
+        "handlers.ResetPasswordRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "newPassword",
+                "otp"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                },
+                "newPassword": {
+                    "type": "string",
+                    "minLength": 8,
+                    "example": "newsecret123"
+                },
+                "otp": {
+                    "type": "string",
+                    "example": "123456"
+                }
+            }
+        },
+        "handlers.ServiceInfo": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "postgres responding"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "up"
+                }
+            }
+        },
+        "handlers.SetupStatusResponse": {
+            "type": "object",
+            "properties": {
+                "hasAdminUsers": {
+                    "type": "boolean"
+                },
+                "requiresSetup": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "handlers.UpdateCurrentProfileRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name",
+                "preferredLocale"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "preferredLocale": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.UpdateProfilePhotoRequest": {
+            "type": "object",
+            "properties": {
+                "fileId": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.UpdateSecurityRequest": {
+            "type": "object",
+            "properties": {
+                "twoFactorEnabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "handlers.UpdateUserRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name",
+                "preferredLocale",
+                "role"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "preferredLocale": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.UploadFileResponse": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "$ref": "#/definitions/presenter.FileResponse"
+                }
+            }
+        },
+        "handlers.VerifyLoginOTPRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "otp"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "jane@example.com"
+                },
+                "otp": {
+                    "type": "string",
+                    "example": "123456"
+                }
+            }
+        },
+        "presenter.FileResponse": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "contentType": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "originalName": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string",
+                    "enum": [
+                        "aws",
+                        "minio"
+                    ],
+                    "example": "aws"
+                },
+                "sizeBytes": {
+                    "type": "integer"
+                },
+                "storageKey": {
+                    "type": "string"
+                },
+                "storedName": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "uploadedById": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "enum": [
+                        "private",
+                        "public"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/file.Visibility"
+                        }
+                    ],
+                    "example": "private"
+                }
+            }
+        },
+        "presenter.PaginatedFilesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/presenter.FileResponse"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/presenter.PaginationMetaResponse"
+                }
+            }
+        },
+        "presenter.PaginatedUsersResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/presenter.UserResponse"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/presenter.PaginationMetaResponse"
+                }
+            }
+        },
+        "presenter.PaginationMetaResponse": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "search": {
+                    "type": "string"
+                },
+                "sortBy": {
+                    "type": "string"
+                },
+                "sortOrder": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "totalPages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "presenter.SignedDownloadResponse": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "$ref": "#/definitions/presenter.FileResponse"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "presenter.UserResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "mustChangePassword": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "preferredLocale": {
+                    "enum": [
+                        "fr",
+                        "en"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/user.Locale"
+                        }
+                    ],
+                    "example": "fr"
+                },
+                "profilePhotoFileId": {
+                    "type": "string"
+                },
+                "profilePhotoUrl": {
+                    "type": "string"
+                },
+                "role": {
+                    "enum": [
+                        "admin",
+                        "user"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/user.Role"
+                        }
+                    ],
+                    "example": "user"
+                },
+                "twoFactorEnabled": {
+                    "type": "boolean"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "user.Locale": {
+            "type": "string",
+            "enum": [
+                "fr",
+                "en"
+            ],
+            "x-enum-varnames": [
+                "LocaleFR",
+                "LocaleEN"
+            ]
+        },
+        "user.Role": {
+            "type": "string",
+            "enum": [
+                "admin",
+                "user"
+            ],
+            "x-enum-varnames": [
+                "RoleAdmin",
+                "RoleUser"
+            ]
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Use `Bearer \u003ctoken\u003e`.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import crypto from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -46,6 +47,20 @@ const RAILWAY_APP_SERVICE_SPECS = [
     serviceName: "realtime-gateway",
   },
 ];
+const SAFE_UPDATE_PATHS = [
+  "docker-compose.yml",
+  "admin/.env.example",
+  "admin/Dockerfile",
+  "admin/railway.json",
+  "admin/nginx",
+  "api/.env.example",
+  "api/Dockerfile",
+  "api/railway.json",
+  "api/docs",
+  "realtime-gateway/.env.example",
+  "realtime-gateway/Dockerfile",
+  "realtime-gateway/railway.json",
+];
 const ENV_FILE_SPECS = [
   { envPath: "admin/.env", examplePath: "admin/.env.example" },
   { envPath: "api/.env", examplePath: "api/.env.example" },
@@ -83,6 +98,12 @@ async function main() {
       return;
     }
 
+    if (invocation.command === "update") {
+      await runUpdate(invocation.argv);
+      outro(pc.green("Project update complete."));
+      return;
+    }
+
     if (invocation.command === "setup-railway") {
       await runSetupRailway(invocation.argv);
       outro(pc.green("Railway setup complete."));
@@ -92,6 +113,12 @@ async function main() {
     if (invocation.command === "sync-railway-env") {
       await runSyncRailwayEnv(invocation.argv);
       outro(pc.green("Railway environment sync complete."));
+      return;
+    }
+
+    if (invocation.command === "destroy-railway") {
+      await runDestroyRailway(invocation.argv);
+      outro(pc.green("Railway teardown complete."));
       return;
     }
 
@@ -135,12 +162,20 @@ function resolveInvocation(argv) {
       return { argv: rawArgs.slice(1), command: "publish", title: "asaje publish" };
     }
 
+    if (firstArg === "update") {
+      return { argv: rawArgs.slice(1), command: "update", title: "asaje update" };
+    }
+
     if (firstArg === "setup-railway") {
       return { argv: rawArgs.slice(1), command: "setup-railway", title: "asaje setup-railway" };
     }
 
     if (firstArg === "sync-railway-env") {
       return { argv: rawArgs.slice(1), command: "sync-railway-env", title: "asaje sync-railway-env" };
+    }
+
+    if (firstArg === "destroy-railway") {
+      return { argv: rawArgs.slice(1), command: "destroy-railway", title: "asaje destroy-railway" };
     }
 
     if (firstArg === "create") {
@@ -162,6 +197,22 @@ function resolveInvocation(argv) {
     return { argv: rawArgs.slice(1), command: "publish", title: "create-asaje-go-vue" };
   }
 
+  if (firstArg === "update") {
+    return { argv: rawArgs.slice(1), command: "update", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "setup-railway") {
+    return { argv: rawArgs.slice(1), command: "setup-railway", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "sync-railway-env") {
+    return { argv: rawArgs.slice(1), command: "sync-railway-env", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "destroy-railway") {
+    return { argv: rawArgs.slice(1), command: "destroy-railway", title: "create-asaje-go-vue" };
+  }
+
   return { argv: rawArgs, command: "create", title: "create-asaje-go-vue" };
 }
 
@@ -172,16 +223,20 @@ function printHelp() {
   console.log(`- ${pc.bold("asaje start [directory]")} start a configured project`);
   console.log(`- ${pc.bold("asaje doctor [directory]")} check environment and project readiness`);
   console.log(`- ${pc.bold("asaje publish")} run npm publish checklist for the CLI package`);
+  console.log(`- ${pc.bold("asaje update [directory]")} update managed boilerplate files from the template`);
   console.log(`- ${pc.bold("asaje setup-railway [directory]")} provision Railway infrastructure for a project`);
   console.log(`- ${pc.bold("asaje sync-railway-env [directory]")} sync Railway app variables without provisioning`);
+  console.log(`- ${pc.bold("asaje destroy-railway [directory]")} delete the linked Railway environment or project`);
   console.log(pc.bold("\nExamples"));
   console.log(`- ${pc.bold("npx create-asaje-go-vue my-app")}`);
   console.log(`- ${pc.bold("node ./bin/create-asaje-go-vue.js my-app --yes")}`);
   console.log(`- ${pc.bold("node ./bin/asaje.js start ../my-app")}`);
   console.log(`- ${pc.bold("node ./bin/asaje.js doctor ..")}`);
   console.log(`- ${pc.bold("node ./bin/asaje.js publish")}`);
+  console.log(`- ${pc.bold("node ./bin/asaje.js update .. --dry-run")}`);
   console.log(`- ${pc.bold("node ./bin/asaje.js setup-railway ..")}`);
   console.log(`- ${pc.bold("node ./bin/asaje.js sync-railway-env ..")}`);
+  console.log(`- ${pc.bold("node ./bin/asaje.js destroy-railway ..")}`);
 }
 
 async function runCreate(argv) {
@@ -274,6 +329,71 @@ function parseCreateArgs(argv) {
   }
 
   return { ...options, directory: positionals[0] };
+}
+
+function parseUpdateArgs(argv) {
+  const options = {
+    branch: undefined,
+    directory: ".",
+    dryRun: false,
+    include: [],
+    template: undefined,
+    yes: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--yes" || arg === "-y") {
+      options.yes = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--template") {
+      options.template = argv[index + 1] || options.template;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--template=")) {
+      options.template = arg.split("=")[1] || options.template;
+      continue;
+    }
+
+    if (arg === "--branch") {
+      options.branch = argv[index + 1] || options.branch;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--branch=")) {
+      options.branch = arg.split("=")[1] || options.branch;
+      continue;
+    }
+
+    if (arg === "--include") {
+      options.include.push(...splitCommaSeparatedPaths(argv[index + 1] || ""));
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--include=")) {
+      options.include.push(...splitCommaSeparatedPaths(arg.split("=")[1] || ""));
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  options.include = uniquePaths(options.include);
+  return options;
 }
 
 async function collectCreateAnswers(args) {
@@ -610,6 +730,44 @@ async function collectCreateAnswers(args) {
   });
 }
 
+async function collectUpdateAnswers(args) {
+  if (args.yes) {
+    return args;
+  }
+
+  const directory = await prompt(
+    text({
+      defaultValue: args.directory,
+      message: "Project directory to update?",
+      placeholder: ".",
+      validate(value) {
+        return value.trim().length === 0 ? "Project directory is required" : undefined;
+      },
+    }),
+  );
+
+  const include = args.include.length
+    ? args.include
+    : splitCommaSeparatedPaths(
+        await prompt(
+          text({
+            defaultValue: "",
+            message: "Additional files or directories to overwrite from the template? (optional, comma-separated)",
+            placeholder: "admin/src/stores/session.ts,admin/src/services/http/session.ts",
+          }),
+        ),
+      );
+
+  return {
+    branch: args.branch,
+    directory,
+    dryRun: args.dryRun,
+    include,
+    template: args.template,
+    yes: true,
+  };
+}
+
 function buildCreateAnswers(input) {
   const directory = input.directory.trim();
   const slug = slugify(path.basename(directory));
@@ -911,6 +1069,48 @@ async function runPublish(argv) {
   console.log(`- Publish with ${pc.bold("npm publish")}`);
 }
 
+async function runUpdate(argv) {
+  const args = parseUpdateArgs(argv);
+  const answers = await collectUpdateAnswers(args);
+  const projectDir = path.resolve(process.cwd(), answers.directory);
+
+  await ensureProjectStructure(projectDir);
+
+  const projectConfig = await loadProjectConfig(projectDir);
+  const templateRepository = answers.template || projectConfig?.template?.repository || DEFAULT_TEMPLATE;
+  const templateBranch = answers.branch || projectConfig?.template?.branch || DEFAULT_BRANCH;
+  const templateDir = await fs.mkdtemp(path.join(os.tmpdir(), "asaje-update-"));
+
+  try {
+    console.log(pc.dim(`\nCloning template ${templateRepository}#${templateBranch}...`));
+    await cloneTemplate(templateRepository, templateBranch, templateDir);
+    await cleanupTemplateFiles(templateDir);
+
+    const selectedPaths = uniquePaths([...SAFE_UPDATE_PATHS, ...answers.include]);
+    const summary = await applyTemplateUpdates({
+      dryRun: answers.dryRun,
+      projectDir,
+      selectedPaths,
+      templateDir,
+    });
+
+    if (!answers.dryRun) {
+      await updateProjectTemplateConfig(projectDir, projectConfig, templateRepository, templateBranch);
+    }
+
+    printUpdateSummary({
+      branch: templateBranch,
+      dryRun: answers.dryRun,
+      include: answers.include,
+      projectDir,
+      repository: templateRepository,
+      summary,
+    });
+  } finally {
+    await fs.remove(templateDir);
+  }
+}
+
 async function runSetupRailway(argv) {
   const args = parseSetupRailwayArgs(argv);
   const answers = await collectSetupRailwayAnswers(args);
@@ -919,6 +1119,7 @@ async function runSetupRailway(argv) {
   await ensureProjectStructure(projectDir);
   await ensureRailwayCliInstalled();
   await ensureRailwayAuthenticated(projectDir, answers.environment);
+  await ensureRailwayEnvironmentLinked(projectDir, answers.environment);
 
   const manifest = await readRailwayManifest(projectDir);
   manifest.resources ||= {};
@@ -946,7 +1147,19 @@ async function runSetupRailway(argv) {
 
   const rabbitMqResult = await ensureRailwayResource({
     aliases: ["rabbitmq"],
-    commandArgs: ["deploy", "--template", "RabbitMQ"],
+    commandArgs: [
+      "add",
+      "--service",
+      "rabbitmq",
+      "--image",
+      "rabbitmq:4.1-management-alpine",
+      "--variables",
+      "RABBITMQ_DEFAULT_USER=app",
+      "--variables",
+      `RABBITMQ_DEFAULT_PASS=${randomSecret(18)}`,
+      "--variables",
+      `RABBITMQ_ERLANG_COOKIE=${randomSecret(24)}`,
+    ],
     dryRun: answers.dryRun,
     existingServices,
     key: "rabbitmq",
@@ -984,10 +1197,11 @@ async function runSetupRailway(argv) {
       existingServices,
       key: spec.key,
       manifest,
-      projectDir,
-      railwayContext,
-      serviceName: spec.serviceName,
-    });
+    projectDir,
+    railwayContext,
+    serviceName: spec.serviceName,
+    seedImage: spec.key === "admin" ? "nginx:1.29-alpine" : "alpine:3.22",
+  });
     appServiceSummary.push(serviceResult);
   }
 
@@ -1040,6 +1254,7 @@ async function runSyncRailwayEnv(argv) {
   await ensureProjectStructure(projectDir);
   await ensureRailwayCliInstalled();
   await ensureRailwayAuthenticated(projectDir, answers.environment);
+  await ensureRailwayEnvironmentLinked(projectDir, answers.environment);
 
   const manifest = await readRailwayManifest(projectDir);
   manifest.resources ||= {};
@@ -1081,6 +1296,67 @@ async function runSyncRailwayEnv(argv) {
     resourceSummary: [],
     variableSummary,
   });
+}
+
+async function runDestroyRailway(argv) {
+  const args = parseDestroyRailwayArgs(argv);
+  const answers = await collectDestroyRailwayAnswers(args);
+  const projectDir = path.resolve(process.cwd(), answers.directory);
+
+  await ensureProjectStructure(projectDir);
+  await ensureRailwayCliInstalled();
+  await ensureRailwayAuthenticated(projectDir, answers.environment);
+
+  const railwayContext = await loadRailwayContext(projectDir, answers.environment);
+  const targetEnvironment = answers.environment || railwayContext.environmentId || railwayContext.environmentName;
+  const targetProject = railwayContext.projectId || railwayContext.projectName;
+
+  if (answers.scope === "project") {
+    if (!targetProject) {
+      throw new Error(`Unable to determine Railway project for ${projectDir}. Link the directory first with \`railway link\`.`);
+    }
+
+    console.log(pc.bold("\nDestroy Railway project"));
+    console.log(`- Project: ${pc.bold(railwayContext.projectName || railwayContext.projectId)}`);
+    if (answers.dryRun) {
+      console.log(`- Dry run: would delete project ${pc.bold(targetProject)}`);
+      return;
+    }
+
+    const commandArgs = ["project", "delete", "--project", targetProject, "--yes"];
+    if (answers.twoFactorCode) {
+      commandArgs.push("--2fa-code", answers.twoFactorCode);
+    }
+    await runRailwayCommand(projectDir, undefined, commandArgs);
+  } else {
+    if (!targetEnvironment) {
+      throw new Error(`Unable to determine Railway environment for ${projectDir}. Pass \`--environment\` or link the directory first.`);
+    }
+
+    await ensureRailwayEnvironmentLinked(projectDir, targetEnvironment);
+
+    console.log(pc.bold("\nDestroy Railway environment"));
+    console.log(`- Environment: ${pc.bold(targetEnvironment)}`);
+    if (railwayContext.projectName || railwayContext.projectId) {
+      console.log(`- Project: ${pc.bold(railwayContext.projectName || railwayContext.projectId)}`);
+    }
+    if (answers.dryRun) {
+      console.log(`- Dry run: would delete environment ${pc.bold(targetEnvironment)}`);
+      return;
+    }
+
+    const commandArgs = ["environment", "delete", targetEnvironment, "--yes"];
+    if (answers.twoFactorCode) {
+      commandArgs.push("--2fa-code", answers.twoFactorCode);
+    }
+    await runRailwayCommand(projectDir, undefined, commandArgs);
+  }
+
+  const manifestPath = path.join(projectDir, RAILWAY_MANIFEST_FILENAME);
+  if (await fs.pathExists(manifestPath)) {
+    await fs.remove(manifestPath);
+    console.log(`- Removed local ${pc.bold(RAILWAY_MANIFEST_FILENAME)} manifest`);
+  }
 }
 
 function parseDirectoryArgs(argv) {
@@ -1139,6 +1415,74 @@ function parseSetupRailwayArgs(argv) {
   return options;
 }
 
+function parseDestroyRailwayArgs(argv) {
+  const options = {
+    directory: ".",
+    dryRun: false,
+    environment: undefined,
+    scope: "environment",
+    twoFactorCode: undefined,
+    yes: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--yes" || arg === "-y") {
+      options.yes = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--environment" || arg === "-e") {
+      options.environment = argv[index + 1] || options.environment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--environment=")) {
+      options.environment = arg.split("=")[1] || options.environment;
+      continue;
+    }
+
+    if (arg === "--scope") {
+      options.scope = argv[index + 1] || options.scope;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--scope=")) {
+      options.scope = arg.split("=")[1] || options.scope;
+      continue;
+    }
+
+    if (arg === "--2fa-code") {
+      options.twoFactorCode = argv[index + 1] || options.twoFactorCode;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--2fa-code=")) {
+      options.twoFactorCode = arg.split("=")[1] || options.twoFactorCode;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  if (!["environment", "project"].includes(options.scope)) {
+    throw new Error("--scope must be either 'environment' or 'project'");
+  }
+
+  return options;
+}
+
 async function collectSetupRailwayAnswers(args) {
   if (args.yes) {
     return {
@@ -1192,6 +1536,68 @@ async function collectSetupRailwayAnswers(args) {
   };
 }
 
+async function collectDestroyRailwayAnswers(args) {
+  if (args.yes) {
+    return args;
+  }
+
+  const directory = await prompt(
+    text({
+      defaultValue: args.directory,
+      message: "Project directory linked to Railway?",
+      placeholder: ".",
+      validate(value) {
+        return value.trim().length === 0 ? "Project directory is required" : undefined;
+      },
+    }),
+  );
+
+  const scope = await prompt(
+    select({
+      initialValue: args.scope,
+      message: "What should be deleted?",
+      options: [
+        { label: "Environment", value: "environment", hint: "Delete one Railway environment and its services/resources" },
+        { label: "Project", value: "project", hint: "Delete the whole Railway project" },
+      ],
+    }),
+  );
+
+  let environment = args.environment;
+  if (scope === "environment" && !environment) {
+    environment = await prompt(
+      text({
+        defaultValue: "",
+        message: "Railway environment name or ID? (leave empty for linked default)",
+        placeholder: "production",
+      }),
+    );
+  }
+
+  const confirmed = await prompt(
+    confirm({
+      initialValue: false,
+      message:
+        scope === "project"
+          ? "Delete the whole Railway project and all its environments?"
+          : `Delete the Railway environment${environment ? ` ${environment}` : ""} and all its services/resources?`,
+    }),
+  );
+
+  if (!confirmed) {
+    throw new Error("Railway teardown cancelled.");
+  }
+
+  return {
+    directory,
+    dryRun: args.dryRun,
+    environment: environment?.trim() || undefined,
+    scope,
+    twoFactorCode: args.twoFactorCode,
+    yes: true,
+  };
+}
+
 async function ensureRailwayCliInstalled() {
   const result = await checkCommand({ command: "railway", args: ["--version"], name: "railway" });
   if (!result.ok) {
@@ -1209,6 +1615,21 @@ async function ensureRailwayAuthenticated(projectDir, environment) {
 
   if (result.exitCode !== 0) {
     throw new Error("Railway CLI is not authenticated. Run `railway login` and try again.");
+  }
+}
+
+async function ensureRailwayEnvironmentLinked(projectDir, environment) {
+  if (!environment) {
+    return;
+  }
+
+  const result = await execa("railway", ["environment", "link", environment], {
+    cwd: projectDir,
+    reject: false,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(`Unable to link Railway environment ${environment}. Make sure it exists and try again.`);
   }
 }
 
@@ -1468,7 +1889,15 @@ async function ensureRailwayAppService(config) {
   console.log(`- creating ${pc.cyan(config.serviceName)} service...`);
   const servicesBefore = normalizeRailwayServices(config.existingServices);
   if (!config.dryRun) {
-    await runRailwayCommand(config.projectDir, config.railwayContext.environmentRef, ["add", "--service", config.serviceName]);
+    await runRailwayCommand(config.projectDir, config.railwayContext.environmentRef, [
+      "add",
+      "--service",
+      config.serviceName,
+      "--image",
+      config.seedImage || "alpine:3.22",
+      "--variables",
+      `ASAJE_BOOTSTRAP_SERVICE=${config.serviceName}`,
+    ]);
   }
 
   let createdService = null;
@@ -2020,6 +2449,17 @@ function buildRailwayArgs(args, environment) {
     return args;
   }
 
+  const commandKey = args.slice(0, 2).join(" ");
+  const supportsEnvironmentFlag =
+    commandKey === "service status" ||
+    commandKey === "variable list" ||
+    commandKey === "variable set" ||
+    args[0] === "up";
+
+  if (!supportsEnvironmentFlag) {
+    return args;
+  }
+
   return [...args, "--environment", environment];
 }
 
@@ -2350,6 +2790,115 @@ async function ensureProjectStructure(projectDir) {
       throw new Error(`Project root not recognized, missing ${relativePath} in ${projectDir}`);
     }
   }
+}
+
+async function loadProjectConfig(projectDir) {
+  const configPath = path.join(projectDir, "asaje.config.json");
+  if (!(await fs.pathExists(configPath))) {
+    return null;
+  }
+
+  return fs.readJson(configPath);
+}
+
+async function updateProjectTemplateConfig(projectDir, projectConfig, templateRepository, templateBranch) {
+  const configPath = path.join(projectDir, "asaje.config.json");
+  const nextConfig = {
+    ...(projectConfig || {}),
+    template: {
+      branch: templateBranch,
+      repository: templateRepository,
+    },
+  };
+
+  await fs.writeJson(configPath, nextConfig, { spaces: 2 });
+}
+
+async function applyTemplateUpdates(config) {
+  const summary = {
+    missing: [],
+    skipped: [],
+    updated: [],
+  };
+
+  for (const relativePath of config.selectedPaths) {
+    const sourcePath = path.join(config.templateDir, relativePath);
+    const destinationPath = path.join(config.projectDir, relativePath);
+
+    if (!(await fs.pathExists(sourcePath))) {
+      summary.missing.push(relativePath);
+      continue;
+    }
+
+    const sourceStats = await fs.stat(sourcePath);
+    if (config.dryRun) {
+      summary.updated.push(relativePath);
+      continue;
+    }
+
+    if (sourceStats.isDirectory()) {
+      await fs.remove(destinationPath);
+      await fs.copy(sourcePath, destinationPath);
+    } else {
+      await fs.ensureDir(path.dirname(destinationPath));
+      await fs.copyFile(sourcePath, destinationPath);
+    }
+
+    summary.updated.push(relativePath);
+  }
+
+  summary.skipped = config.selectedPaths.filter((relativePath) => !summary.updated.includes(relativePath) && !summary.missing.includes(relativePath));
+  return summary;
+}
+
+function printUpdateSummary(config) {
+  console.log(pc.bold("\nUpdate"));
+  console.log(`- Directory: ${pc.bold(config.projectDir)}`);
+  console.log(`- Template: ${pc.bold(`${config.repository}#${config.branch}`)}`);
+  console.log(`- Safe paths: ${pc.bold(String(SAFE_UPDATE_PATHS.length))}`);
+  if (config.include.length > 0) {
+    console.log(`- Extra include: ${pc.bold(config.include.join(", "))}`);
+  }
+
+  console.log(pc.bold("\nUpdated"));
+  if (config.summary.updated.length === 0) {
+    console.log("- No files selected for update");
+  } else {
+    for (const relativePath of config.summary.updated) {
+      console.log(`- ${config.dryRun ? "would update" : "updated"} ${pc.bold(relativePath)}`);
+    }
+  }
+
+  if (config.summary.missing.length > 0) {
+    console.log(pc.bold("\nMissing In Template"));
+    for (const relativePath of config.summary.missing) {
+      console.log(`- ${pc.bold(relativePath)}`);
+    }
+  }
+
+  if (config.dryRun) {
+    console.log("- Dry run only, local files were not modified");
+  }
+}
+
+function splitCommaSeparatedPaths(value) {
+  return value
+    .split(",")
+    .map((entry) => normalizeRelativePath(entry))
+    .filter(Boolean);
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths.map((entry) => normalizeRelativePath(entry)).filter(Boolean))];
+}
+
+function normalizeRelativePath(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.replace(/^\.\//, "").replace(/\\/g, "/").replace(/\/$/, "");
 }
 
 async function ensureEnvFiles(projectDir) {

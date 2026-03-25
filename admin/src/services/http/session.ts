@@ -1,14 +1,17 @@
 import { useStorage } from '@vueuse/core'
 import { computed } from 'vue'
+import type { User } from '@/types/user'
 
 export interface StoredSessionState {
   accessToken: string | null
+  currentUser: User | null
   expiresAt: string | null
   refreshToken: string | null
 }
 
 const storage = useStorage<StoredSessionState>('admin-session', {
   accessToken: null,
+  currentUser: null,
   expiresAt: null,
   refreshToken: null,
 })
@@ -26,6 +29,7 @@ export function writeStoredSession(payload: StoredSessionState) {
 export function clearStoredSession() {
   storage.value = {
     accessToken: null,
+    currentUser: null,
     expiresAt: null,
     refreshToken: null,
   }

@@ -98,8 +98,10 @@ async function refreshSession() {
         }
 
         const session = payload as AuthSession;
+        const storedSession = readStoredSession();
         writeStoredSession({
           accessToken: session.accessToken,
+          currentUser: session.user || storedSession.currentUser,
           expiresAt: session.expiresAt,
           refreshToken: session.refreshToken,
         });
