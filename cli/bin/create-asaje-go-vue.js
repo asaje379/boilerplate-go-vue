@@ -919,6 +919,7 @@ async function runSetupRailway(argv) {
   await ensureProjectStructure(projectDir);
   await ensureRailwayCliInstalled();
   await ensureRailwayAuthenticated(projectDir, answers.environment);
+  await ensureRailwayEnvironmentLinked(projectDir, answers.environment);
 
   const manifest = await readRailwayManifest(projectDir);
   manifest.resources ||= {};
@@ -1040,6 +1041,7 @@ async function runSyncRailwayEnv(argv) {
   await ensureProjectStructure(projectDir);
   await ensureRailwayCliInstalled();
   await ensureRailwayAuthenticated(projectDir, answers.environment);
+  await ensureRailwayEnvironmentLinked(projectDir, answers.environment);
 
   const manifest = await readRailwayManifest(projectDir);
   manifest.resources ||= {};
@@ -1209,6 +1211,21 @@ async function ensureRailwayAuthenticated(projectDir, environment) {
 
   if (result.exitCode !== 0) {
     throw new Error("Railway CLI is not authenticated. Run `railway login` and try again.");
+  }
+}
+
+async function ensureRailwayEnvironmentLinked(projectDir, environment) {
+  if (!environment) {
+    return;
+  }
+
+  const result = await execa("railway", ["environment", "link", environment], {
+    cwd: projectDir,
+    reject: false,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(`Unable to link Railway environment ${environment}. Make sure it exists and try again.`);
   }
 }
 
@@ -2017,6 +2034,17 @@ async function runRailwayCommand(projectDir, environment, args) {
 
 function buildRailwayArgs(args, environment) {
   if (!environment) {
+    return args;
+  }
+
+  const commandKey = args.slice(0, 2).join(" ");
+  const supportsEnvironmentFlag =
+    commandKey === "service status" ||
+    commandKey === "variable list" ||
+    commandKey === "variable set" ||
+    args[0] === "up";
+
+  if (!supportsEnvironmentFlag) {
     return args;
   }
 
