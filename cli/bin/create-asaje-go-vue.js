@@ -30,21 +30,21 @@ const RAILWAY_SERVICE_DISCOVERY_RETRY_COUNT = 5;
 const RAILWAY_APP_SERVICE_SPECS = [
   {
     aliases: ["api", "backend", "server"],
+    baseName: "api",
     directory: "api",
     key: "api",
-    serviceName: "api",
   },
   {
     aliases: ["admin", "frontend", "web"],
+    baseName: "admin",
     directory: "admin",
     key: "admin",
-    serviceName: "admin",
   },
   {
     aliases: ["realtime-gateway", "realtime"],
+    baseName: "realtime-gateway",
     directory: "realtime-gateway",
     key: "realtime",
-    serviceName: "realtime-gateway",
   },
 ];
 const SAFE_UPDATE_PATHS = [
@@ -1115,6 +1115,8 @@ async function runSetupRailway(argv) {
   const args = parseSetupRailwayArgs(argv);
   const answers = await collectSetupRailwayAnswers(args);
   const projectDir = path.resolve(process.cwd(), answers.directory);
+  const projectConfig = await loadProjectConfig(projectDir);
+  const projectSlug = resolveProjectSlug(projectDir, projectConfig);
 
   await ensureProjectStructure(projectDir);
   await ensureRailwayCliInstalled();
@@ -1191,17 +1193,18 @@ async function runSetupRailway(argv) {
   console.log(pc.bold("\nApplication services"));
   manifest.appServices ||= {};
   for (const spec of RAILWAY_APP_SERVICE_SPECS) {
+    const serviceName = buildRailwayAppServiceName(projectSlug, spec.baseName);
     const serviceResult = await ensureRailwayAppService({
       aliases: spec.aliases,
       dryRun: answers.dryRun,
       existingServices,
       key: spec.key,
       manifest,
-    projectDir,
-    railwayContext,
-    serviceName: spec.serviceName,
-    seedImage: spec.key === "admin" ? "nginx:1.29-alpine" : "alpine:3.22",
-  });
+      projectDir,
+      railwayContext,
+      serviceName,
+      seedImage: spec.key === "admin" ? "nginx:1.29-alpine" : "alpine:3.22",
+    });
     appServiceSummary.push(serviceResult);
   }
 
@@ -1210,6 +1213,7 @@ async function runSetupRailway(argv) {
   manifest.environmentName = railwayContext.environmentName || manifest.environmentName || null;
   manifest.projectId = railwayContext.projectId || manifest.projectId || null;
   manifest.projectName = railwayContext.projectName || manifest.projectName || null;
+  manifest.projectSlug = projectSlug;
   manifest.updatedAt = new Date().toISOString();
 
   const servicesAfterProvision = await discoverRailwayServices(railwayContext, projectDir);
@@ -1226,6 +1230,7 @@ async function runSetupRailway(argv) {
     dryRun: answers.dryRun,
     manifest,
     projectDir,
+    projectSlug,
     railwayContext,
     services: servicesAfterProvision,
   });
@@ -1250,6 +1255,8 @@ async function runSyncRailwayEnv(argv) {
   const args = parseSetupRailwayArgs(argv);
   const answers = await collectSetupRailwayAnswers(args);
   const projectDir = path.resolve(process.cwd(), answers.directory);
+  const projectConfig = await loadProjectConfig(projectDir);
+  const projectSlug = resolveProjectSlug(projectDir, projectConfig);
 
   await ensureProjectStructure(projectDir);
   await ensureRailwayCliInstalled();
@@ -1280,6 +1287,7 @@ async function runSyncRailwayEnv(argv) {
   manifest.environmentName = railwayContext.environmentName || manifest.environmentName || null;
   manifest.projectId = railwayContext.projectId || manifest.projectId || null;
   manifest.projectName = railwayContext.projectName || manifest.projectName || null;
+  manifest.projectSlug = manifest.projectSlug || projectSlug;
   manifest.updatedAt = new Date().toISOString();
 
   if (!answers.dryRun) {
@@ -1641,6 +1649,7 @@ async function readRailwayManifest(projectDir) {
       bucket: DEFAULT_RAILWAY_BUCKET,
       environmentId: null,
       environmentName: null,
+      projectSlug: null,
       projectId: null,
       projectName: null,
       resources: {},
@@ -1930,11 +1939,12 @@ async function deployRailwayAppServices(config) {
   const summary = [];
   for (const spec of RAILWAY_APP_SERVICE_SPECS) {
     const manifestEntry = config.manifest.appServices?.[spec.key];
-    const service = findRailwayService(config.services, spec.aliases, manifestEntry?.serviceName || spec.serviceName);
-    const targetServiceName = service?.name || manifestEntry?.serviceName || spec.serviceName;
+    const defaultServiceName = buildRailwayAppServiceName(config.projectSlug, spec.baseName);
+    const service = findRailwayService(config.services, spec.aliases, manifestEntry?.serviceName || defaultServiceName);
+    const targetServiceName = service?.name || manifestEntry?.serviceName || defaultServiceName;
 
     if (!service && !config.dryRun) {
-      console.log(`- ${pc.yellow(spec.serviceName)} service not found, skipping deployment`);
+      console.log(`- ${pc.yellow(defaultServiceName)} service not found, skipping deployment`);
       continue;
     }
 
@@ -2282,7 +2292,7 @@ function findRailwayService(services, aliases, preferredName) {
   const normalizedAliases = aliases.map(normalizeRailwayServiceName);
   return services.find((service) => {
     const normalizedName = normalizeRailwayServiceName(service.name);
-    return normalizedAliases.some((alias) => normalizedName === alias || normalizedName.includes(alias));
+    return normalizedAliases.some((alias) => normalizedName === alias || normalizedName.endsWith(`-${alias}`));
   });
 }
 
@@ -2367,14 +2377,28 @@ function updateRailwayManifestAppServices(manifest, services) {
   manifest.appServices ||= {};
 
   const entries = [
-    ["api", findRailwayService(services, ["api", "backend", "server"], manifest.appServices.api?.serviceName)],
-    ["admin", findRailwayService(services, ["admin", "frontend", "web"], manifest.appServices.admin?.serviceName)],
+    [
+      "api",
+      findRailwayService(
+        services,
+        ["api", "backend", "server"],
+        manifest.appServices.api?.serviceName || buildRailwayAppServiceName(manifest.projectSlug, "api"),
+      ),
+    ],
+    [
+      "admin",
+      findRailwayService(
+        services,
+        ["admin", "frontend", "web"],
+        manifest.appServices.admin?.serviceName || buildRailwayAppServiceName(manifest.projectSlug, "admin"),
+      ),
+    ],
     [
       "realtime",
       findRailwayService(
         services,
         ["realtime-gateway", "realtime"],
-        manifest.appServices.realtime?.serviceName,
+        manifest.appServices.realtime?.serviceName || buildRailwayAppServiceName(manifest.projectSlug, "realtime-gateway"),
       ),
     ],
   ];
@@ -2799,6 +2823,16 @@ async function loadProjectConfig(projectDir) {
   }
 
   return fs.readJson(configPath);
+}
+
+function resolveProjectSlug(projectDir, projectConfig) {
+  return slugify(projectConfig?.projectSlug || projectConfig?.projectName || path.basename(projectDir) || "asaje-app");
+}
+
+function buildRailwayAppServiceName(projectSlug, baseName) {
+  const normalizedSlug = slugify(projectSlug || "asaje-app");
+  const normalizedBaseName = slugify(baseName);
+  return `${normalizedSlug}-${normalizedBaseName}`;
 }
 
 async function updateProjectTemplateConfig(projectDir, projectConfig, templateRepository, templateBranch) {
