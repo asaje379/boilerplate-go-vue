@@ -44,6 +44,14 @@ npx -p create-asaje-go-vue@latest asaje doctor ./my-app
 npx -p create-asaje-go-vue@latest asaje publish
 ```
 
+### Update an existing project from the template
+
+```bash
+npx -p create-asaje-go-vue@latest asaje update ./my-app --dry-run
+npx -p create-asaje-go-vue@latest asaje update ./my-app --yes
+npx -p create-asaje-go-vue@latest asaje update ./my-app --include admin/src/stores/session.ts,admin/src/services/http/session.ts
+```
+
 ### Provision Railway resources
 
 ```bash
@@ -56,6 +64,13 @@ npx -p create-asaje-go-vue@latest asaje setup-railway ./my-app --dry-run
 ```bash
 npx -p create-asaje-go-vue@latest asaje sync-railway-env ./my-app
 npx -p create-asaje-go-vue@latest asaje sync-railway-env ./my-app --dry-run
+```
+
+### Destroy Railway resources
+
+```bash
+npx -p create-asaje-go-vue@latest asaje destroy-railway ./my-app
+npx -p create-asaje-go-vue@latest asaje destroy-railway ./my-app --scope project --yes
 ```
 
 ## What `create` does
@@ -89,6 +104,16 @@ npx -p create-asaje-go-vue@latest asaje sync-railway-env ./my-app --dry-run
 - runs `npm run pack:dry-run`
 - prints the final manual npm release steps
 
+## What `asaje update` does
+
+- validates the target project structure
+- reads the template repository and branch from `asaje.config.json` when available
+- clones the latest template into a temporary directory
+- overwrites a safe set of boilerplate-managed files such as Railway config, Dockerfiles, generated Swagger docs, and `.env.example` files
+- supports `--include` for explicitly overwriting extra files or directories from the template, such as `admin/src/stores/session.ts`
+- supports `--dry-run` to preview which files would be updated
+- updates `asaje.config.json` with the template repository and branch used for the update
+
 ## What `asaje setup-railway` does
 
 - validates the target project structure
@@ -111,6 +136,15 @@ npx -p create-asaje-go-vue@latest asaje sync-railway-env ./my-app --dry-run
 - syncs variables for `api`, `realtime-gateway`, and `admin` without provisioning infra resources
 - supports `--dry-run` to preview variable changes without applying them
 
+## What `asaje destroy-railway` does
+
+- validates the target project structure
+- checks that the Railway CLI is installed and authenticated
+- deletes either the linked Railway environment or the whole Railway project
+- supports `--scope environment` (default) and `--scope project`
+- supports `--dry-run` to preview the destructive action without applying it
+- removes the local `asaje.railway.json` manifest after a successful deletion
+
 ## Useful flags
 
 ```bash
@@ -121,9 +155,12 @@ node ./bin/asaje.js start ../my-app --yes --profile frontend-only
 node ./bin/asaje.js start ../my-app --yes --skip-admin --skip-worker
 node ./bin/asaje.js doctor ../my-app
 node ./bin/asaje.js publish .
+node ./bin/asaje.js update ../my-app --dry-run
+node ./bin/asaje.js update ../my-app --include admin/src/stores/session.ts --yes
 node ./bin/asaje.js setup-railway ../my-app --yes
 node ./bin/asaje.js setup-railway ../my-app --yes --dry-run
 node ./bin/asaje.js sync-railway-env ../my-app --yes
+node ./bin/asaje.js destroy-railway ../my-app --scope environment --yes
 ```
 
 ## Publish checklist
