@@ -9,24 +9,18 @@ import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
 import {
-  AppForm,
+  AppResourcePage,
   DataTable,
   FormCheckbox,
   FormInput,
   FormPassword,
   FormSelect,
+  ResourceFormDialog,
   type DataTableLoadParams,
 } from "@/components/system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useResourceCrud } from "@/composables";
 import { usersApi } from "@/services/api/users.api";
 import { supportedLocales } from "@/lib/i18n";
 import { useRealtimeStore } from "@/stores/realtime";
@@ -48,12 +42,39 @@ const localeOptions: FormSelectOption[] = supportedLocales.map((locale) => ({
 }));
 
 const users = ref<User[]>([]);
-const total = ref(0);
-const isDialogOpen = ref(false);
-const editingUser = ref<User | null>(null);
 const usersTableRef = ref<UsersTableInstance | null>(null);
 const realtime = useRealtimeStore();
 const { connectedUsersCount, isConnected: isRealtimeConnected } = storeToRefs(realtime);
+const {
+  closeDialog,
+  dialogDescription,
+  dialogTitle,
+  editingItem: editingUser,
+  formInitialValues,
+  isDialogOpen,
+  isEditing,
+  openCreateDialog,
+  openEditDialog,
+} = useResourceCrud<User>({
+  createDescription: t("users.dialog.createDescription"),
+  createInitialValues: {
+    email: "",
+    mustChangePassword: true,
+    name: "",
+    password: "",
+    preferredLocale: "fr",
+    role: "user",
+  },
+  createTitle: t("users.dialog.createTitle"),
+  editDescription: t("users.dialog.editDescription"),
+  editInitialValues: (user) => ({
+    email: user.email,
+    name: user.name,
+    preferredLocale: user.preferredLocale,
+    role: user.role,
+  }),
+  editTitle: t("users.dialog.editTitle"),
+});
 
 const createSchema = toTypedSchema(
   z.object({
@@ -136,7 +157,6 @@ async function loadUsers(params: DataTableLoadParams) {
   });
 
   users.value = response.items;
-  total.value = response.meta.total;
 
   return {
     rows: response.items,
@@ -144,18 +164,8 @@ async function loadUsers(params: DataTableLoadParams) {
   };
 }
 
-function openCreateDialog() {
-  editingUser.value = null;
-  isDialogOpen.value = true;
-}
-
-function openEditDialog(user: User) {
-  editingUser.value = user;
-  isDialogOpen.value = true;
-}
-
 async function handleUserSubmit(values: unknown) {
-  if (editingUser.value) {
+  if (isEditing.value) {
     await submitUpdate(values);
     return;
   }
@@ -187,7 +197,7 @@ async function submitCreate(values: unknown) {
   try {
     await usersApi.create(values as Parameters<typeof usersApi.create>[0]);
     toast.success(t("users.toast.created"));
-    isDialogOpen.value = false;
+    closeDialog();
     await usersTableRef.value?.reload();
   } catch {
     return;
@@ -202,7 +212,7 @@ async function submitUpdate(values: unknown) {
   try {
     await usersApi.update(editingUser.value.id, values as Parameters<typeof usersApi.update>[1]);
     toast.success(t("users.toast.updated"));
-    isDialogOpen.value = false;
+    closeDialog();
     await usersTableRef.value?.reload();
   } catch {
     return;
@@ -211,122 +221,87 @@ async function submitUpdate(values: unknown) {
 </script>
 
 <template>
-  <section class="space-y-6">
-    <Card class="border-border/60 bg-card/90">
-      <CardHeader class="flex flex-row items-center justify-between gap-4">
-        <div>
-          <CardTitle class="flex items-center gap-2">
-            <span>{{ $t("users.title") }}</span>
-            <Badge variant="outline">
-              {{
-                isRealtimeConnected
-                  ? $t("users.connectedNow", { count: connectedUsersCount ?? 0 })
-                  : $t("users.realtimeOffline")
-              }}
-            </Badge>
-          </CardTitle>
-          <CardDescription>{{ $t("users.description") }}</CardDescription>
-        </div>
-        <Button @click="openCreateDialog">{{ $t("users.createUser") }}</Button>
-      </CardHeader>
-      <CardContent>
-        <DataTable
-          ref="usersTableRef"
-          :columns="columns"
-          :load-data="loadUsers"
-          :data="users"
-          storage-key="users-management"
-          :search-placeholder="$t('users.searchPlaceholder')"
+  <AppResourcePage
+    :title="$t('users.title')"
+    :description="$t('users.description')"
+    :action-label="$t('users.createUser')"
+    @action="openCreateDialog"
+  >
+    <template #badge>
+      <Badge variant="outline">
+        {{
+          isRealtimeConnected
+            ? $t("users.connectedNow", { count: connectedUsersCount ?? 0 })
+            : $t("users.realtimeOffline")
+        }}
+      </Badge>
+    </template>
+
+    <DataTable
+      ref="usersTableRef"
+      :columns="columns"
+      :load-data="loadUsers"
+      :data="users"
+      storage-key="users-management"
+      :search-placeholder="$t('users.searchPlaceholder')"
+    />
+  </AppResourcePage>
+
+  <ResourceFormDialog
+    v-model:open="isDialogOpen"
+    :title="dialogTitle"
+    :description="dialogDescription"
+    :initial-values="formInitialValues"
+    :validation-schema="editingUser ? updateSchema : createSchema"
+    @invalid-submit="handleInvalidSubmit"
+    @submit="handleUserSubmit"
+  >
+    <template #default="{ isSubmitting }">
+      <div class="space-y-4">
+        <FormInput
+          name="name"
+          :label="$t('users.form.nameLabel')"
+          :placeholder="$t('users.form.namePlaceholder')"
         />
-      </CardContent>
-    </Card>
-
-    <Dialog :open="isDialogOpen" @update:open="(value) => (isDialogOpen = value)">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{{
-            editingUser ? $t("users.dialog.editTitle") : $t("users.dialog.createTitle")
-          }}</DialogTitle>
-          <DialogDescription>
-            {{
-              editingUser
-                ? $t("users.dialog.editDescription")
-                : $t("users.dialog.createDescription")
-            }}
-          </DialogDescription>
-        </DialogHeader>
-
-        <AppForm
-          :initial-values="
-            editingUser
-              ? {
-                  email: editingUser.email,
-                  name: editingUser.name,
-                  preferredLocale: editingUser.preferredLocale,
-                  role: editingUser.role,
-                }
-              : {
-                  email: '',
-                  mustChangePassword: true,
-                  name: '',
-                  password: '',
-                  preferredLocale: 'fr',
-                  role: 'user',
-                }
-          "
-          :validation-schema="editingUser ? updateSchema : createSchema"
-          @invalid-submit="handleInvalidSubmit"
-          @submit="handleUserSubmit"
-        >
-          <template #default="{ isSubmitting }">
-            <div class="space-y-4">
-              <FormInput
-                name="name"
-                :label="$t('users.form.nameLabel')"
-                :placeholder="$t('users.form.namePlaceholder')"
-              />
-              <FormInput
-                name="email"
-                :label="$t('users.form.emailLabel')"
-                :placeholder="$t('users.form.emailPlaceholder')"
-              />
-              <FormPassword
-                v-if="!editingUser"
-                name="password"
-                :label="$t('users.form.passwordLabel')"
-                :placeholder="$t('users.form.passwordPlaceholder')"
-              />
-              <FormCheckbox
-                v-if="!editingUser"
-                name="mustChangePassword"
-                :label="$t('users.form.mustChangePassword')"
-                :description="$t('users.form.mustChangePasswordDescription')"
-              />
-              <FormSelect
-                name="preferredLocale"
-                :label="$t('users.form.localeLabel')"
-                :options="localeOptions"
-                :placeholder="$t('users.form.localePlaceholder')"
-              />
-              <FormSelect
-                name="role"
-                :label="$t('users.form.roleLabel')"
-                :options="roleOptions"
-                :placeholder="$t('users.form.rolePlaceholder')"
-              />
-              <Button type="submit" class="w-full" :disabled="isSubmitting">
-                {{
-                  isSubmitting
-                    ? $t("users.form.submitting")
-                    : editingUser
-                      ? $t("users.form.submitSave")
-                      : $t("users.form.submitCreate")
-                }}
-              </Button>
-            </div>
-          </template>
-        </AppForm>
-      </DialogContent>
-    </Dialog>
-  </section>
+        <FormInput
+          name="email"
+          :label="$t('users.form.emailLabel')"
+          :placeholder="$t('users.form.emailPlaceholder')"
+        />
+        <FormPassword
+          v-if="!editingUser"
+          name="password"
+          :label="$t('users.form.passwordLabel')"
+          :placeholder="$t('users.form.passwordPlaceholder')"
+        />
+        <FormCheckbox
+          v-if="!editingUser"
+          name="mustChangePassword"
+          :label="$t('users.form.mustChangePassword')"
+          :description="$t('users.form.mustChangePasswordDescription')"
+        />
+        <FormSelect
+          name="preferredLocale"
+          :label="$t('users.form.localeLabel')"
+          :options="localeOptions"
+          :placeholder="$t('users.form.localePlaceholder')"
+        />
+        <FormSelect
+          name="role"
+          :label="$t('users.form.roleLabel')"
+          :options="roleOptions"
+          :placeholder="$t('users.form.rolePlaceholder')"
+        />
+        <Button type="submit" class="w-full" :disabled="isSubmitting">
+          {{
+            isSubmitting
+              ? $t("users.form.submitting")
+              : editingUser
+                ? $t("users.form.submitSave")
+                : $t("users.form.submitCreate")
+          }}
+        </Button>
+      </div>
+    </template>
+  </ResourceFormDialog>
 </template>
