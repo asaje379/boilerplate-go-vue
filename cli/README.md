@@ -95,7 +95,9 @@ npx -p create-asaje-go-vue@latest asaje sync-railway-env ./my-app --dry-run
 - checks that the Railway CLI is installed and authenticated
 - reads the linked Railway project context
 - provisions PostgreSQL, RabbitMQ, and S3-compatible object storage on Railway
-- wires Railway variables for `api`, `realtime-gateway`, and `admin` when those services already exist in the Railway project
+- creates missing Railway app services for `api`, `realtime-gateway`, and `admin`
+- wires Railway variables for `api`, `realtime-gateway`, and `admin`
+- triggers the first Railway deployment for each app service using the service-local `Dockerfile` and `railway.json`
 - generates missing app secrets such as `JWT_SECRET` and `SWAGGER_PASSWORD`, while reusing existing Railway values when present
 - supports `--dry-run` to preview provisioning and variable changes without applying them
 - writes an `asaje.railway.json` manifest in the target project for future runs, including discovered Railway app service names
