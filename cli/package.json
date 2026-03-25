@@ -1,6 +1,6 @@
 {
 	"name": "create-asaje-go-vue",
-	"version": "0.2.7",
+	"version": "0.2.8",
 	"description": "CLI to scaffold, configure, and run the Asaje Go + Vue boilerplate",
 	"type": "module",
 	"bin": {
