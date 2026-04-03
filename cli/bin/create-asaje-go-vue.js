@@ -27,7 +27,7 @@ const RAILWAY_MANIFEST_FILENAME = "asaje.railway.json";
 const DEFAULT_RAILWAY_BUCKET = "boilerplate-files";
 const RAILWAY_SERVICE_DISCOVERY_RETRY_DELAY_MS = 2000;
 const RAILWAY_SERVICE_DISCOVERY_RETRY_COUNT = 5;
-const RAILWAY_APP_SERVICE_SPECS = [
+const DEFAULT_RAILWAY_APP_SERVICE_SPECS = [
   {
     aliases: ["api", "backend", "server"],
     baseName: "api",
@@ -110,9 +110,45 @@ async function main() {
       return;
     }
 
+    if (invocation.command === "update-railway") {
+      await runUpdateRailway(invocation.argv);
+      outro(pc.green("Railway update complete."));
+      return;
+    }
+
     if (invocation.command === "sync-railway-env") {
       await runSyncRailwayEnv(invocation.argv);
       outro(pc.green("Railway environment sync complete."));
+      return;
+    }
+
+    if (invocation.command === "print-railway-config") {
+      await runPrintRailwayConfig(invocation.argv);
+      outro(pc.green("Railway config printed."));
+      return;
+    }
+
+    if (invocation.command === "export-railway-config") {
+      await runExportRailwayConfig(invocation.argv);
+      outro(pc.green("Railway config exported."));
+      return;
+    }
+
+    if (invocation.command === "import-railway-config") {
+      await runImportRailwayConfig(invocation.argv);
+      outro(pc.green("Railway config imported."));
+      return;
+    }
+
+    if (invocation.command === "diff-railway-config") {
+      await runDiffRailwayConfig(invocation.argv);
+      outro(pc.green("Railway config diff complete."));
+      return;
+    }
+
+    if (invocation.command === "deploy-railway") {
+      await runDeployRailway(invocation.argv);
+      outro(pc.green("Railway deployment complete."));
       return;
     }
 
@@ -170,8 +206,32 @@ function resolveInvocation(argv) {
       return { argv: rawArgs.slice(1), command: "setup-railway", title: "asaje setup-railway" };
     }
 
+    if (firstArg === "update-railway") {
+      return { argv: rawArgs.slice(1), command: "update-railway", title: "asaje update-railway" };
+    }
+
     if (firstArg === "sync-railway-env") {
       return { argv: rawArgs.slice(1), command: "sync-railway-env", title: "asaje sync-railway-env" };
+    }
+
+    if (firstArg === "print-railway-config") {
+      return { argv: rawArgs.slice(1), command: "print-railway-config", title: "asaje print-railway-config" };
+    }
+
+    if (firstArg === "export-railway-config") {
+      return { argv: rawArgs.slice(1), command: "export-railway-config", title: "asaje export-railway-config" };
+    }
+
+    if (firstArg === "import-railway-config") {
+      return { argv: rawArgs.slice(1), command: "import-railway-config", title: "asaje import-railway-config" };
+    }
+
+    if (firstArg === "diff-railway-config") {
+      return { argv: rawArgs.slice(1), command: "diff-railway-config", title: "asaje diff-railway-config" };
+    }
+
+    if (firstArg === "deploy-railway") {
+      return { argv: rawArgs.slice(1), command: "deploy-railway", title: "asaje deploy-railway" };
     }
 
     if (firstArg === "destroy-railway") {
@@ -205,8 +265,32 @@ function resolveInvocation(argv) {
     return { argv: rawArgs.slice(1), command: "setup-railway", title: "create-asaje-go-vue" };
   }
 
+  if (firstArg === "update-railway") {
+    return { argv: rawArgs.slice(1), command: "update-railway", title: "create-asaje-go-vue" };
+  }
+
   if (firstArg === "sync-railway-env") {
     return { argv: rawArgs.slice(1), command: "sync-railway-env", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "print-railway-config") {
+    return { argv: rawArgs.slice(1), command: "print-railway-config", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "export-railway-config") {
+    return { argv: rawArgs.slice(1), command: "export-railway-config", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "import-railway-config") {
+    return { argv: rawArgs.slice(1), command: "import-railway-config", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "diff-railway-config") {
+    return { argv: rawArgs.slice(1), command: "diff-railway-config", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "deploy-railway") {
+    return { argv: rawArgs.slice(1), command: "deploy-railway", title: "create-asaje-go-vue" };
   }
 
   if (firstArg === "destroy-railway") {
@@ -225,18 +309,30 @@ function printHelp() {
   console.log(`- ${pc.bold("asaje publish")} run npm publish checklist for the CLI package`);
   console.log(`- ${pc.bold("asaje update [directory]")} update managed boilerplate files from the template`);
   console.log(`- ${pc.bold("asaje setup-railway [directory]")} provision Railway infrastructure for a project`);
+  console.log(`- ${pc.bold("asaje update-railway [directory]")} reconcile Railway resources/services/vars from current config`);
   console.log(`- ${pc.bold("asaje sync-railway-env [directory]")} sync Railway app variables without provisioning`);
+  console.log(`- ${pc.bold("asaje print-railway-config [directory]")} print resolved Railway config for an environment`);
+  console.log(`- ${pc.bold("asaje export-railway-config [directory]")} export resolved Railway config as JSON`);
+  console.log(`- ${pc.bold("asaje import-railway-config [directory]")} import a resolved Railway config snapshot into Railway`);
+  console.log(`- ${pc.bold("asaje diff-railway-config [directory]")} diff resolved Railway configs or snapshots`);
+  console.log(`- ${pc.bold("asaje deploy-railway [directory]")} redeploy the latest code to Railway app services`);
   console.log(`- ${pc.bold("asaje destroy-railway [directory]")} delete the linked Railway environment or project`);
   console.log(pc.bold("\nExamples"));
   console.log(`- ${pc.bold("npx create-asaje-go-vue my-app")}`);
-  console.log(`- ${pc.bold("node ./bin/create-asaje-go-vue.js my-app --yes")}`);
-  console.log(`- ${pc.bold("node ./bin/asaje.js start ../my-app")}`);
-  console.log(`- ${pc.bold("node ./bin/asaje.js doctor ..")}`);
-  console.log(`- ${pc.bold("node ./bin/asaje.js publish")}`);
-  console.log(`- ${pc.bold("node ./bin/asaje.js update .. --dry-run")}`);
-  console.log(`- ${pc.bold("node ./bin/asaje.js setup-railway ..")}`);
-  console.log(`- ${pc.bold("node ./bin/asaje.js sync-railway-env ..")}`);
-  console.log(`- ${pc.bold("node ./bin/asaje.js destroy-railway ..")}`);
+  console.log(`- ${pc.bold("asaje create my-app --yes")}`);
+  console.log(`- ${pc.bold("asaje start ../my-app")}`);
+  console.log(`- ${pc.bold("asaje doctor ..")}`);
+  console.log(`- ${pc.bold("asaje publish")}`);
+  console.log(`- ${pc.bold("asaje update .. --dry-run")}`);
+  console.log(`- ${pc.bold("asaje setup-railway ..")}`);
+  console.log(`- ${pc.bold("asaje update-railway ..")}`);
+  console.log(`- ${pc.bold("asaje sync-railway-env ..")}`);
+  console.log(`- ${pc.bold("asaje print-railway-config .. --environment production")}`);
+  console.log(`- ${pc.bold("asaje export-railway-config .. --environment production --output ./.railway.production.json")}`);
+  console.log(`- ${pc.bold("asaje import-railway-config .. --file ./.railway.production.json --yes")}`);
+  console.log(`- ${pc.bold("asaje diff-railway-config .. --environment production --compare-environment staging")}`);
+  console.log(`- ${pc.bold("asaje deploy-railway ..")}`);
+  console.log(`- ${pc.bold("asaje destroy-railway ..")}`);
 }
 
 async function runCreate(argv) {
@@ -1117,16 +1213,21 @@ async function runSetupRailway(argv) {
   const projectDir = path.resolve(process.cwd(), answers.directory);
   const projectConfig = await loadProjectConfig(projectDir);
   const projectSlug = resolveProjectSlug(projectDir, projectConfig);
+  const appServiceSpecs = resolveRailwayAppServiceSpecs(projectConfig);
+  const requestedRailwayEnvironment = resolveRequestedRailwayEnvironmentRef(projectConfig, answers.environment);
 
   await ensureProjectStructure(projectDir);
+  await ensureRailwayAppServiceTargets(projectDir, appServiceSpecs);
   await ensureRailwayCliInstalled();
-  await ensureRailwayAuthenticated(projectDir, answers.environment);
-  await ensureRailwayEnvironmentLinked(projectDir, answers.environment);
+  await ensureRailwayAuthenticated(projectDir, requestedRailwayEnvironment);
+  await ensureRailwayEnvironmentLinked(projectDir, requestedRailwayEnvironment);
 
   const manifest = await readRailwayManifest(projectDir);
   manifest.resources ||= {};
-  const railwayContext = await loadRailwayContext(projectDir, answers.environment);
-  railwayContext.environmentRef = answers.environment || railwayContext.environmentId || railwayContext.environmentName;
+  const railwayContext = await loadRailwayContext(projectDir, requestedRailwayEnvironment);
+  const environmentSelection = resolveRailwayEnvironmentSelection(projectConfig, answers.environment, railwayContext);
+  railwayContext.environmentConfigKey = environmentSelection.configKey;
+  railwayContext.environmentRef = environmentSelection.railwayEnvironment || railwayContext.environmentId || railwayContext.environmentName;
   const existingServices = await discoverRailwayServices(railwayContext, projectDir);
   const resourceSummary = [];
   const appServiceSummary = [];
@@ -1192,8 +1293,8 @@ async function runSetupRailway(argv) {
 
   console.log(pc.bold("\nApplication services"));
   manifest.appServices ||= {};
-  for (const spec of RAILWAY_APP_SERVICE_SPECS) {
-    const serviceName = buildRailwayAppServiceName(projectSlug, spec.baseName);
+  for (const spec of appServiceSpecs) {
+    const serviceName = resolveRailwayServiceName(spec, projectSlug);
     const serviceResult = await ensureRailwayAppService({
       aliases: spec.aliases,
       dryRun: answers.dryRun,
@@ -1203,7 +1304,7 @@ async function runSetupRailway(argv) {
       projectDir,
       railwayContext,
       serviceName,
-      seedImage: spec.key === "admin" ? "nginx:1.29-alpine" : "alpine:3.22",
+      seedImage: spec.seedImage,
     });
     appServiceSummary.push(serviceResult);
   }
@@ -1217,21 +1318,27 @@ async function runSetupRailway(argv) {
   manifest.updatedAt = new Date().toISOString();
 
   const servicesAfterProvision = await discoverRailwayServices(railwayContext, projectDir);
-  updateRailwayManifestAppServices(manifest, servicesAfterProvision);
+  updateRailwayManifestAppServices(manifest, servicesAfterProvision, appServiceSpecs, projectSlug);
   await wireRailwayVariables({
+    appServiceSpecs,
     dryRun: answers.dryRun,
+    environmentSelection,
     manifest,
+    projectConfig,
     projectDir,
     railwayContext,
     services: servicesAfterProvision,
     summary: variableSummary,
   });
   const deploymentResults = await deployRailwayAppServices({
+    availableSpecs: appServiceSpecs,
     dryRun: answers.dryRun,
     manifest,
+    messagePrefix: "asaje setup-railway",
     projectDir,
     projectSlug,
     railwayContext,
+    selectedSpecs: appServiceSpecs,
     services: servicesAfterProvision,
   });
   deploySummary.push(...deploymentResults);
@@ -1251,31 +1358,44 @@ async function runSetupRailway(argv) {
   });
 }
 
+async function runUpdateRailway(argv) {
+  await runSetupRailway(argv);
+}
+
 async function runSyncRailwayEnv(argv) {
   const args = parseSetupRailwayArgs(argv);
   const answers = await collectSetupRailwayAnswers(args);
   const projectDir = path.resolve(process.cwd(), answers.directory);
   const projectConfig = await loadProjectConfig(projectDir);
   const projectSlug = resolveProjectSlug(projectDir, projectConfig);
+  const appServiceSpecs = resolveRailwayAppServiceSpecs(projectConfig);
+  const requestedRailwayEnvironment = resolveRequestedRailwayEnvironmentRef(projectConfig, answers.environment);
 
   await ensureProjectStructure(projectDir);
+  await ensureRailwayAppServiceTargets(projectDir, appServiceSpecs);
   await ensureRailwayCliInstalled();
-  await ensureRailwayAuthenticated(projectDir, answers.environment);
-  await ensureRailwayEnvironmentLinked(projectDir, answers.environment);
+  await ensureRailwayAuthenticated(projectDir, requestedRailwayEnvironment);
+  await ensureRailwayEnvironmentLinked(projectDir, requestedRailwayEnvironment);
 
   const manifest = await readRailwayManifest(projectDir);
   manifest.resources ||= {};
   manifest.appServices ||= {};
 
-  const railwayContext = await loadRailwayContext(projectDir, answers.environment);
-  railwayContext.environmentRef = answers.environment || railwayContext.environmentId || railwayContext.environmentName;
+  const railwayContext = await loadRailwayContext(projectDir, requestedRailwayEnvironment);
+  const environmentSelection = resolveRailwayEnvironmentSelection(projectConfig, answers.environment, railwayContext);
+  railwayContext.environmentConfigKey = environmentSelection.configKey;
+  railwayContext.environmentRef = environmentSelection.railwayEnvironment || railwayContext.environmentId || railwayContext.environmentName;
   const services = await discoverRailwayServices(railwayContext, projectDir);
   const variableSummary = [];
 
-  updateRailwayManifestAppServices(manifest, services);
+  updateRailwayManifestAppServices(manifest, services, appServiceSpecs, projectSlug);
   await wireRailwayVariables({
+    appServiceSpecs,
+    diff: answers.diff,
     dryRun: answers.dryRun,
+    environmentSelection,
     manifest,
+    projectConfig,
     projectDir,
     railwayContext,
     services,
@@ -1298,11 +1418,225 @@ async function runSyncRailwayEnv(argv) {
     appServiceSummary: [],
     bucket: manifest.bucket || answers.bucket,
     deploySummary: [],
+    diffMode: answers.diff,
     dryRun: answers.dryRun,
     projectDir,
     railwayContext,
     resourceSummary: [],
     variableSummary,
+  });
+}
+
+async function runPrintRailwayConfig(argv) {
+  const args = parsePrintRailwayConfigArgs(argv);
+  const payload = await buildResolvedRailwayConfigPayload({
+    directory: args.directory,
+    environment: args.environment,
+    showSecrets: args.showSecrets,
+  });
+
+  if (args.json) {
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+
+  printResolvedRailwayConfig(payload);
+}
+
+async function runExportRailwayConfig(argv) {
+  const args = parseExportRailwayConfigArgs(argv);
+  const payload = await buildResolvedRailwayConfigPayload({
+    directory: args.directory,
+    environment: args.environment,
+    showSecrets: args.showSecrets,
+  });
+
+  const outputPath = path.resolve(process.cwd(), args.output || buildRailwayConfigExportFilename(payload));
+  await fs.ensureDir(path.dirname(outputPath));
+  await fs.writeJson(outputPath, payload, { spaces: 2 });
+  console.log(`- Exported to ${pc.bold(outputPath)}`);
+}
+
+async function runImportRailwayConfig(argv) {
+  const args = await collectImportRailwayConfigAnswers(parseImportRailwayConfigArgs(argv));
+  const projectDir = path.resolve(process.cwd(), args.directory);
+  const projectConfig = await loadProjectConfig(projectDir);
+  const requestedRailwayEnvironment = resolveRequestedRailwayEnvironmentRef(projectConfig, args.environment);
+  const snapshot = await readRailwayConfigSnapshot(args.file);
+  const currentPayload = await buildResolvedRailwayConfigPayload({
+    directory: args.directory,
+    environment: args.environment,
+    showSecrets: true,
+  });
+
+  assertRailwaySnapshotImportable(snapshot);
+
+  await ensureProjectStructure(projectDir);
+  await ensureRailwayCliInstalled();
+  await ensureRailwayAuthenticated(projectDir, requestedRailwayEnvironment);
+  await ensureRailwayEnvironmentLinked(projectDir, requestedRailwayEnvironment);
+
+  const railwayContext = await loadRailwayContext(projectDir, requestedRailwayEnvironment);
+  railwayContext.environmentRef = requestedRailwayEnvironment || railwayContext.environmentId || railwayContext.environmentName;
+
+  console.log(pc.bold("\nImport Railway config"));
+  console.log(`- Source: ${pc.bold(path.resolve(process.cwd(), args.file))}`);
+  console.log(`- Target directory: ${pc.bold(projectDir)}`);
+  if (railwayContext.environmentName || railwayContext.environmentId) {
+    console.log(`- Target environment: ${pc.bold(railwayContext.environmentName || railwayContext.environmentId)}`);
+  }
+
+  const summary = [];
+  const targetServices = new Map(currentPayload.services.map((service) => [service.key, service]));
+  for (const sourceService of snapshot.services || []) {
+    const targetService = targetServices.get(sourceService.key) || sourceService;
+    await applyRailwayVariables({
+      diff: args.diff,
+      dryRun: args.dryRun,
+      environment: railwayContext.environmentRef,
+      projectDir,
+      serviceName: targetService.serviceName,
+      summary,
+      variables: sourceService.variables || {},
+    });
+  }
+
+  printRailwayImportSummary({
+    dryRun: args.dryRun,
+    file: path.resolve(process.cwd(), args.file),
+    projectDir,
+    railwayContext,
+    summary,
+  });
+}
+
+async function runDiffRailwayConfig(argv) {
+  const args = parseDiffRailwayConfigArgs(argv);
+  const left = args.file
+    ? await readRailwayConfigSnapshot(args.file)
+    : await buildResolvedRailwayConfigPayload({
+        directory: args.directory,
+        environment: args.environment,
+        showSecrets: args.showSecrets,
+      });
+  const right = args.compareFile
+    ? await readRailwayConfigSnapshot(args.compareFile)
+    : await buildResolvedRailwayConfigPayload({
+        directory: args.directory,
+        environment: args.compareEnvironment,
+        showSecrets: args.showSecrets,
+      });
+
+  const diff = sanitizeRailwayConfigSnapshotDiff(buildRailwayConfigSnapshotDiff(left, right), args.showSecrets);
+  if (args.json) {
+    console.log(JSON.stringify(diff, null, 2));
+    return;
+  }
+  printRailwayConfigSnapshotDiff(diff);
+}
+
+async function buildResolvedRailwayConfigPayload(config) {
+  const projectDir = path.resolve(process.cwd(), config.directory);
+  const projectConfig = await loadProjectConfig(projectDir);
+  const projectSlug = resolveProjectSlug(projectDir, projectConfig);
+  const appServiceSpecs = resolveRailwayAppServiceSpecs(projectConfig);
+
+  await ensureProjectStructure(projectDir);
+  await ensureRailwayAppServiceTargets(projectDir, appServiceSpecs);
+
+  const environmentSelection = resolveRailwayEnvironmentSelection(projectConfig, config.environment, null);
+  const manifest = await readRailwayManifest(projectDir);
+  manifest.projectSlug = manifest.projectSlug || projectSlug;
+  manifest.appServices ||= {};
+  manifest.resources ||= {};
+
+  const plan = await resolveRailwayVariablePlan({
+    appServiceSpecs,
+    environmentSelection,
+    includeUnresolvedServices: true,
+    manifest,
+    projectConfig,
+    projectDir,
+    railwayContext: { environmentRef: environmentSelection.railwayEnvironment || config.environment || null },
+    services: [],
+  });
+
+  return {
+    directory: projectDir,
+    environment: {
+      configKey: environmentSelection.configKey,
+      railwayEnvironment: environmentSelection.railwayEnvironment || null,
+    },
+    exportedAt: new Date().toISOString(),
+    services: appServiceSpecs.map((spec) => ({
+      aliases: spec.aliases,
+      baseName: spec.baseName,
+      directory: spec.directory,
+      dockerfile: spec.dockerfile,
+      key: spec.key,
+      serviceName: resolveRailwayServiceName(spec, projectSlug),
+      variables: sanitizeVariablesForOutput(plan.serviceRegistry[spec.key]?.variables || {}, config.showSecrets),
+    })),
+    variablesMode: resolveRailwayVariablesMode(projectConfig),
+  };
+}
+
+async function runDeployRailway(argv) {
+  const args = parseDeployRailwayArgs(argv);
+  const answers = await collectDeployRailwayAnswers(args);
+  const projectDir = path.resolve(process.cwd(), answers.directory);
+  const projectConfig = await loadProjectConfig(projectDir);
+  const projectSlug = resolveProjectSlug(projectDir, projectConfig);
+  const appServiceSpecs = resolveRailwayAppServiceSpecs(projectConfig);
+  const requestedRailwayEnvironment = resolveRequestedRailwayEnvironmentRef(projectConfig, answers.environment);
+
+  await ensureProjectStructure(projectDir);
+  await ensureRailwayAppServiceTargets(projectDir, appServiceSpecs);
+  await ensureRailwayCliInstalled();
+  await ensureRailwayAuthenticated(projectDir, requestedRailwayEnvironment);
+  await ensureRailwayEnvironmentLinked(projectDir, requestedRailwayEnvironment);
+
+  const manifest = await readRailwayManifest(projectDir);
+  manifest.resources ||= {};
+  manifest.appServices ||= {};
+
+  const railwayContext = await loadRailwayContext(projectDir, requestedRailwayEnvironment);
+  const environmentSelection = resolveRailwayEnvironmentSelection(projectConfig, answers.environment, railwayContext);
+  railwayContext.environmentConfigKey = environmentSelection.configKey;
+  railwayContext.environmentRef = environmentSelection.railwayEnvironment || railwayContext.environmentId || railwayContext.environmentName;
+  const services = await discoverRailwayServices(railwayContext, projectDir);
+  updateRailwayManifestAppServices(manifest, services, appServiceSpecs, projectSlug);
+
+  const selectedSpecs = resolveDeployRailwaySpecs(answers.services, appServiceSpecs);
+  const deploySummary = await deployRailwayAppServices({
+    availableSpecs: appServiceSpecs,
+    dryRun: answers.dryRun,
+    manifest,
+    messagePrefix: "asaje deploy-railway",
+    projectDir,
+    projectSlug,
+    railwayContext,
+    selectedSpecs,
+    services,
+  });
+
+  manifest.environmentId = railwayContext.environmentId || manifest.environmentId || null;
+  manifest.environmentName = railwayContext.environmentName || manifest.environmentName || null;
+  manifest.projectId = railwayContext.projectId || manifest.projectId || null;
+  manifest.projectName = railwayContext.projectName || manifest.projectName || null;
+  manifest.projectSlug = manifest.projectSlug || projectSlug;
+  manifest.updatedAt = new Date().toISOString();
+
+  if (!answers.dryRun) {
+    await writeRailwayManifest(projectDir, manifest);
+  }
+
+  printRailwayDeploySummary({
+    deploySummary,
+    dryRun: answers.dryRun,
+    projectDir,
+    railwayContext,
+    selectedServices: selectedSpecs.map((spec) => spec.baseName),
   });
 }
 
@@ -1375,6 +1709,7 @@ function parseSetupRailwayArgs(argv) {
   const options = {
     bucket: DEFAULT_RAILWAY_BUCKET,
     directory: ".",
+    diff: false,
     dryRun: false,
     environment: undefined,
     yes: false,
@@ -1391,6 +1726,11 @@ function parseSetupRailwayArgs(argv) {
 
     if (arg === "--dry-run") {
       options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--diff") {
+      options.diff = true;
       continue;
     }
 
@@ -1420,6 +1760,296 @@ function parseSetupRailwayArgs(argv) {
   }
 
   options.directory = positionals[0] || options.directory;
+  return options;
+}
+
+function parsePrintRailwayConfigArgs(argv) {
+  const options = {
+    directory: ".",
+    environment: undefined,
+    json: false,
+    showSecrets: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
+
+    if (arg === "--show-secrets") {
+      options.showSecrets = true;
+      continue;
+    }
+
+    if (arg === "--environment" || arg === "-e") {
+      options.environment = argv[index + 1] || options.environment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--environment=")) {
+      options.environment = arg.split("=")[1] || options.environment;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  return options;
+}
+
+function parseExportRailwayConfigArgs(argv) {
+  const options = {
+    directory: ".",
+    environment: undefined,
+    output: undefined,
+    showSecrets: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--show-secrets") {
+      options.showSecrets = true;
+      continue;
+    }
+
+    if (arg === "--environment" || arg === "-e") {
+      options.environment = argv[index + 1] || options.environment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--environment=")) {
+      options.environment = arg.split("=")[1] || options.environment;
+      continue;
+    }
+
+    if (arg === "--output" || arg === "-o") {
+      options.output = argv[index + 1] || options.output;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--output=")) {
+      options.output = arg.split("=")[1] || options.output;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  return options;
+}
+
+function parseImportRailwayConfigArgs(argv) {
+  const options = {
+    diff: false,
+    directory: ".",
+    dryRun: false,
+    environment: undefined,
+    file: undefined,
+    yes: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--yes" || arg === "-y") {
+      options.yes = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--diff") {
+      options.diff = true;
+      continue;
+    }
+
+    if (arg === "--environment" || arg === "-e") {
+      options.environment = argv[index + 1] || options.environment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--environment=")) {
+      options.environment = arg.split("=")[1] || options.environment;
+      continue;
+    }
+
+    if (arg === "--file" || arg === "-f") {
+      options.file = argv[index + 1] || options.file;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--file=")) {
+      options.file = arg.split("=")[1] || options.file;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  if (!options.file) {
+    throw new Error("import-railway-config requires --file <snapshot.json>.");
+  }
+  return options;
+}
+
+function parseDiffRailwayConfigArgs(argv) {
+  const options = {
+    compareEnvironment: undefined,
+    compareFile: undefined,
+    directory: ".",
+    environment: undefined,
+    file: undefined,
+    json: false,
+    showSecrets: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
+
+    if (arg === "--show-secrets") {
+      options.showSecrets = true;
+      continue;
+    }
+
+    if (arg === "--environment" || arg === "-e") {
+      options.environment = argv[index + 1] || options.environment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--environment=")) {
+      options.environment = arg.split("=")[1] || options.environment;
+      continue;
+    }
+
+    if (arg === "--compare-environment") {
+      options.compareEnvironment = argv[index + 1] || options.compareEnvironment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--compare-environment=")) {
+      options.compareEnvironment = arg.split("=")[1] || options.compareEnvironment;
+      continue;
+    }
+
+    if (arg === "--file" || arg === "-f") {
+      options.file = argv[index + 1] || options.file;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--file=")) {
+      options.file = arg.split("=")[1] || options.file;
+      continue;
+    }
+
+    if (arg === "--compare-file") {
+      options.compareFile = argv[index + 1] || options.compareFile;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--compare-file=")) {
+      options.compareFile = arg.split("=")[1] || options.compareFile;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  if (!options.compareEnvironment && !options.compareFile) {
+    throw new Error("diff-railway-config requires --compare-environment <name> or --compare-file <snapshot.json>.");
+  }
+  return options;
+}
+
+function parseDeployRailwayArgs(argv) {
+  const options = {
+    directory: ".",
+    dryRun: false,
+    environment: undefined,
+    services: [],
+    yes: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--yes" || arg === "-y") {
+      options.yes = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    if (arg === "--environment" || arg === "-e") {
+      options.environment = argv[index + 1] || options.environment;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--environment=")) {
+      options.environment = arg.split("=")[1] || options.environment;
+      continue;
+    }
+
+    if (arg === "--service") {
+      options.services.push(argv[index + 1] || "");
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--service=")) {
+      options.services.push(arg.split("=")[1] || "");
+      continue;
+    }
+
+    if (arg === "--services") {
+      options.services.push(...splitCsv(argv[index + 1] || ""));
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--services=")) {
+      options.services.push(...splitCsv(arg.split("=")[1] || ""));
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  options.services = [...new Set(options.services.map((service) => service.trim()).filter(Boolean))];
   return options;
 }
 
@@ -1496,6 +2126,7 @@ async function collectSetupRailwayAnswers(args) {
     return {
       bucket: args.bucket,
       directory: args.directory,
+      diff: args.diff,
       dryRun: args.dryRun,
       environment: args.environment,
     };
@@ -1539,9 +2170,69 @@ async function collectSetupRailwayAnswers(args) {
   return {
     bucket,
     directory,
+    diff: args.diff,
     dryRun: args.dryRun,
     environment: environment?.trim() || undefined,
   };
+}
+
+async function collectDeployRailwayAnswers(args) {
+  if (args.yes) {
+    return {
+      directory: args.directory,
+      dryRun: args.dryRun,
+      environment: args.environment,
+      services: args.services,
+    };
+  }
+
+  const directory = await prompt(
+    text({
+      defaultValue: args.directory,
+      message: "Project directory to deploy to Railway?",
+      placeholder: ".",
+      validate(value) {
+        return value.trim().length === 0 ? "Project directory is required" : undefined;
+      },
+    }),
+  );
+
+  let environment = args.environment;
+  if (!environment) {
+    environment = await prompt(
+      text({
+        defaultValue: "",
+        message: "Railway environment name or ID? (leave empty for linked default)",
+        placeholder: "production",
+      }),
+    );
+  }
+
+  return {
+    directory,
+    dryRun: args.dryRun,
+    environment: environment?.trim() || undefined,
+    services: args.services,
+  };
+}
+
+async function collectImportRailwayConfigAnswers(args) {
+  if (args.yes || args.dryRun) {
+    return args;
+  }
+
+  const confirmed = await prompt(
+    confirm({
+      initialValue: false,
+      message: `Import Railway variables from ${args.file} into ${args.directory}?`,
+    }),
+  );
+
+  if (!confirmed) {
+    throw new Error("Railway config import cancelled.");
+  }
+
+  return args;
 }
 
 async function collectDestroyRailwayAnswers(args) {
@@ -1937,9 +2628,10 @@ async function deployRailwayAppServices(config) {
   console.log(pc.bold("\nDeployments"));
 
   const summary = [];
-  for (const spec of RAILWAY_APP_SERVICE_SPECS) {
+  const selectedSpecs = config.selectedSpecs || config.availableSpecs || DEFAULT_RAILWAY_APP_SERVICE_SPECS;
+  for (const spec of selectedSpecs) {
     const manifestEntry = config.manifest.appServices?.[spec.key];
-    const defaultServiceName = buildRailwayAppServiceName(config.projectSlug, spec.baseName);
+    const defaultServiceName = resolveRailwayServiceName(spec, config.projectSlug);
     const service = findRailwayService(config.services, spec.aliases, manifestEntry?.serviceName || defaultServiceName);
     const targetServiceName = service?.name || manifestEntry?.serviceName || defaultServiceName;
 
@@ -1963,7 +2655,7 @@ async function deployRailwayAppServices(config) {
       "--path-as-root",
       "--detach",
       "--message",
-      `asaje setup-railway: deploy ${targetServiceName}`,
+      `${config.messagePrefix || "asaje setup-railway"}: deploy ${targetServiceName}`,
     ]);
     summary.push({ directory: spec.directory, serviceName: targetServiceName, status: "deployed" });
   }
@@ -1971,10 +2663,300 @@ async function deployRailwayAppServices(config) {
   return summary;
 }
 
-async function wireRailwayVariables(config) {
-  console.log(pc.bold("\nVariables"));
+function resolveDeployRailwaySpecs(selectedServices, availableSpecs = DEFAULT_RAILWAY_APP_SERVICE_SPECS) {
+  if (!selectedServices || selectedServices.length === 0) {
+    return availableSpecs;
+  }
 
+  const specs = [];
+  for (const selectedService of selectedServices) {
+    const normalizedService = normalizeRailwayServiceName(selectedService);
+    const spec = availableSpecs.find((candidate) => {
+      const names = [candidate.key, candidate.baseName, ...candidate.aliases].map(normalizeRailwayServiceName);
+      return names.includes(normalizedService);
+    });
+
+    if (!spec) {
+      throw new Error(
+        `Unknown Railway service \`${selectedService}\`. Use one of: ${availableSpecs.map((candidate) => candidate.baseName).join(", ")}.`,
+      );
+    }
+
+    if (!specs.includes(spec)) {
+      specs.push(spec);
+    }
+  }
+
+  return specs;
+}
+
+function resolveRailwayAppServiceSpecs(projectConfig) {
+  const configuredServices = projectConfig?.railway?.services;
+  if (!Array.isArray(configuredServices) || configuredServices.length === 0) {
+    return DEFAULT_RAILWAY_APP_SERVICE_SPECS.map((spec) => ({ ...spec, aliases: [...spec.aliases] }));
+  }
+
+  const specs = configuredServices.map((service, index) => normalizeRailwayAppServiceSpec(service, index));
+  const seenKeys = new Set();
+  for (const spec of specs) {
+    if (seenKeys.has(spec.key)) {
+      throw new Error(`Duplicate railway.services key \`${spec.key}\`.`);
+    }
+    seenKeys.add(spec.key);
+  }
+
+  return specs;
+}
+
+function getRailwayConfig(projectConfig) {
+  const railwayConfig = projectConfig?.railway;
+  return railwayConfig && typeof railwayConfig === "object" && !Array.isArray(railwayConfig) ? railwayConfig : {};
+}
+
+function listRailwayEnvironmentEntries(projectConfig) {
+  const environments = getRailwayConfig(projectConfig).environments;
+  if (!environments || typeof environments !== "object" || Array.isArray(environments)) {
+    return [];
+  }
+
+  return Object.entries(environments)
+    .filter(([, value]) => value && typeof value === "object" && !Array.isArray(value))
+    .map(([key, value]) => ({
+      config: value,
+      key,
+      railwayEnvironment: pickFirstString([value.railwayEnvironment, value.environment, value.railwayEnvironmentName]),
+    }));
+}
+
+function resolveRequestedRailwayEnvironmentRef(projectConfig, requestedEnvironment) {
+  const entries = listRailwayEnvironmentEntries(projectConfig);
+  const requested = pickFirstString([requestedEnvironment]);
+  if (requested) {
+    const exact = entries.find(
+      (entry) => entry.key === requested || entry.railwayEnvironment === requested,
+    );
+    return exact?.railwayEnvironment || requested;
+  }
+
+  const defaultEntry = entries.find((entry) => entry.key === "default");
+  return defaultEntry?.railwayEnvironment || undefined;
+}
+
+function resolveRailwayEnvironmentSelection(projectConfig, requestedEnvironment, railwayContext) {
+  const entries = listRailwayEnvironmentEntries(projectConfig);
+  const candidates = [
+    pickFirstString([requestedEnvironment]),
+    pickFirstString([railwayContext?.environmentId]),
+    pickFirstString([railwayContext?.environmentName]),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const match = entries.find((entry) => entry.key === candidate || entry.railwayEnvironment === candidate);
+    if (match) {
+      return {
+        config: match.config,
+        configKey: match.key,
+        railwayEnvironment: match.railwayEnvironment || candidate,
+      };
+    }
+  }
+
+  const defaultEntry = entries.find((entry) => entry.key === "default");
+  if (defaultEntry) {
+    return {
+      config: defaultEntry.config,
+      configKey: defaultEntry.key,
+      railwayEnvironment: defaultEntry.railwayEnvironment || pickFirstString([railwayContext?.environmentId, railwayContext?.environmentName]),
+    };
+  }
+
+  return {
+    config: {},
+    configKey: null,
+    railwayEnvironment: pickFirstString([requestedEnvironment, railwayContext?.environmentId, railwayContext?.environmentName]),
+  };
+}
+
+function normalizeRailwayAppServiceSpec(input, index) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error(`Invalid railway.services entry at index ${index}.`);
+  }
+
+  const key = slugify(String(input.key || "").trim());
+  const directory = String(input.directory || "").trim().replace(/^\.\//, "").replace(/\/+$/g, "");
+  const baseName = slugify(String(input.baseName || input.key || path.basename(directory) || "").trim());
+  const aliases = [
+    key,
+    baseName,
+    ...(Array.isArray(input.aliases) ? input.aliases : []),
+  ]
+    .map((value) => normalizeRailwayServiceName(value))
+    .filter(Boolean);
+
+  if (!key) {
+    throw new Error("Each railway.services entry needs a non-empty `key`.");
+  }
+  if (!directory) {
+    throw new Error(`Railway service \`${key}\` needs a non-empty \`directory\`.`);
+  }
+  if (!baseName) {
+    throw new Error(`Railway service \`${key}\` needs a valid \`baseName\` or \`key\`.`);
+  }
+
+  return {
+    aliases: [...new Set(aliases)],
+    baseName,
+    directory,
+    dockerfile: String(input.dockerfile || "").trim() || null,
+    key,
+    seedImage: String(input.seedImage || (key === "admin" ? "nginx:1.29-alpine" : "alpine:3.22")).trim(),
+    serviceName: String(input.serviceName || "").trim() || null,
+  };
+}
+
+function resolveRailwayServiceName(spec, projectSlug) {
+  return spec.serviceName || buildRailwayAppServiceName(projectSlug, spec.baseName);
+}
+
+function findRailwayAppServiceSpec(appServiceSpecs, key) {
+  const exact = appServiceSpecs.find((candidate) => candidate.key === key);
+  if (exact) {
+    return exact;
+  }
+
+  const defaultSpec = DEFAULT_RAILWAY_APP_SERVICE_SPECS.find((candidate) => candidate.key === key);
+  if (!defaultSpec) {
+    return null;
+  }
+
+  const defaultNames = [defaultSpec.key, defaultSpec.baseName, ...defaultSpec.aliases].map(normalizeRailwayServiceName);
+  return appServiceSpecs.find((candidate) => {
+    const names = [candidate.key, candidate.baseName, ...candidate.aliases].map(normalizeRailwayServiceName);
+    return names.some((name) => defaultNames.includes(name));
+  }) || null;
+}
+
+function findRailwayServiceByKey(services, appServiceSpecs, manifest, key) {
+  const spec = findRailwayAppServiceSpec(appServiceSpecs, key);
+  if (!spec) {
+    return null;
+  }
+
+  const preferredName = manifest.appServices?.[key]?.serviceName || resolveRailwayServiceName(spec, manifest.projectSlug);
+  return findRailwayService(services, spec.aliases, preferredName);
+}
+
+function resolveRailwayVariablesMode(projectConfig) {
+  const mode = String(getRailwayConfig(projectConfig).variablesMode || "merge").trim().toLowerCase();
+  if (!mode) {
+    return "merge";
+  }
+  if (!["merge", "replace"].includes(mode)) {
+    throw new Error("railway.variablesMode must be either `merge` or `replace`.");
+  }
+  return mode;
+}
+
+function normalizeRailwayVariableMap(input, contextLabel) {
+  if (!input) {
+    return {};
+  }
+  if (typeof input !== "object" || Array.isArray(input)) {
+    throw new Error(`${contextLabel} must be an object mapping variable names to values.`);
+  }
+
+  const normalized = {};
+  for (const [key, value] of Object.entries(input)) {
+    const normalizedKey = String(key || "").trim();
+    if (!normalizedKey) {
+      continue;
+    }
+    if (value === null || value === undefined) {
+      continue;
+    }
+    if (["string", "number", "boolean"].includes(typeof value)) {
+      normalized[normalizedKey] = String(value);
+      continue;
+    }
+    throw new Error(`${contextLabel}.${normalizedKey} must be a string, number, or boolean.`);
+  }
+
+  return normalized;
+}
+
+function resolveDeclaredRailwayVariables(projectConfig, environmentSelection) {
+  const railwayConfig = getRailwayConfig(projectConfig);
+  const rootVariables = railwayConfig.variables && typeof railwayConfig.variables === "object" && !Array.isArray(railwayConfig.variables)
+    ? railwayConfig.variables
+    : {};
+  const environmentVariables = environmentSelection?.config?.variables && typeof environmentSelection.config.variables === "object" && !Array.isArray(environmentSelection.config.variables)
+    ? environmentSelection.config.variables
+    : {};
+
+  const rootShared = normalizeRailwayVariableMap(rootVariables.shared, "railway.variables.shared");
+  const environmentShared = normalizeRailwayVariableMap(
+    environmentVariables.shared,
+    `railway.environments.${environmentSelection?.configKey || "<selected>"}.variables.shared`,
+  );
+
+  const rootServices = rootVariables.services && typeof rootVariables.services === "object" && !Array.isArray(rootVariables.services)
+    ? rootVariables.services
+    : {};
+  const environmentServices = environmentVariables.services && typeof environmentVariables.services === "object" && !Array.isArray(environmentVariables.services)
+    ? environmentVariables.services
+    : {};
+
+  const serviceKeys = [...new Set([...Object.keys(rootServices), ...Object.keys(environmentServices)])];
+  const variablesByService = {};
+
+  for (const serviceKey of serviceKeys) {
+    variablesByService[serviceKey] = {
+      ...normalizeRailwayVariableMap(rootServices[serviceKey], `railway.variables.services.${serviceKey}`),
+      ...normalizeRailwayVariableMap(
+        environmentServices[serviceKey],
+        `railway.environments.${environmentSelection?.configKey || "<selected>"}.variables.services.${serviceKey}`,
+      ),
+    };
+  }
+
+  return {
+    hasDeclaredVariables:
+      Object.keys(rootShared).length > 0 ||
+      Object.keys(environmentShared).length > 0 ||
+      serviceKeys.length > 0,
+    sharedVariables: {
+      ...rootShared,
+      ...environmentShared,
+    },
+    variablesByService,
+  };
+}
+
+function validateDeclaredRailwayVariableTargets(declaredVariables, serviceRegistry) {
+  const knownKeys = new Set(Object.keys(serviceRegistry));
+  for (const serviceKey of Object.keys(declaredVariables.variablesByService)) {
+    if (!knownKeys.has(serviceKey)) {
+      throw new Error(
+        `railway.variables.services.${serviceKey} does not match a known managed service. Add it to railway.services first.`,
+      );
+    }
+  }
+}
+
+function mergeRailwayServiceVariables(registryEntry, variables) {
+  if (!registryEntry || !registryEntry.name) {
+    return;
+  }
+
+  registryEntry.variables = {
+    ...(registryEntry.variables || {}),
+    ...variables,
+  };
+}
+
+async function resolveRailwayVariablePlan(config) {
   const localEnv = await loadRailwayLocalEnvDefaults(config.projectDir);
+  const variablesMode = resolveRailwayVariablesMode(config.projectConfig);
 
   const infra = {
     objectStorage: findRailwayService(
@@ -1994,37 +2976,59 @@ async function wireRailwayVariables(config) {
     ),
   };
   const appServices = {
-    admin: findRailwayService(config.services, ["admin", "frontend", "web"], config.manifest.appServices?.admin?.serviceName),
-    api: findRailwayService(config.services, ["api", "backend", "server"], config.manifest.appServices?.api?.serviceName),
-    realtime: findRailwayService(
-      config.services,
-      ["realtime-gateway", "realtime"],
-      config.manifest.appServices?.realtime?.serviceName,
-    ),
+    admin: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "admin"),
+    api: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "api"),
+    realtime: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "realtime"),
   };
 
-  updateRailwayManifestAppServices(config.manifest, Object.values(appServices).filter(Boolean));
+  const serviceRegistry = {
+    admin: appServices.admin ? { name: appServices.admin.name, variables: {} } : null,
+    api: appServices.api ? { name: appServices.api.name, variables: {} } : null,
+    objectStorage: infra.objectStorage ? { name: infra.objectStorage.name, variables: {} } : null,
+    postgres: infra.postgres ? { name: infra.postgres.name, variables: {} } : null,
+    rabbitmq: infra.rabbitmq ? { name: infra.rabbitmq.name, variables: {} } : null,
+    realtime: appServices.realtime ? { name: appServices.realtime.name, variables: {} } : null,
+  };
 
+  for (const spec of config.appServiceSpecs) {
+    const service = findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, spec.key);
+    if (service?.name) {
+      serviceRegistry[spec.key] = serviceRegistry[spec.key] || { name: service.name, variables: {} };
+      continue;
+    }
+
+    if (config.includeUnresolvedServices) {
+      serviceRegistry[spec.key] = serviceRegistry[spec.key] || {
+        name: resolveRailwayServiceName(spec, config.manifest.projectSlug),
+        variables: {},
+      };
+    }
+  }
+
+  const declaredVariables = resolveDeclaredRailwayVariables(config.projectConfig, config.environmentSelection);
+  validateDeclaredRailwayVariableTargets(declaredVariables, serviceRegistry);
+
+  const notices = [];
   if (!appServices.api) {
-    console.log(`- ${pc.yellow("api")} service not found, skipping API variable wiring`);
+    notices.push("api service not found, skipping API variable wiring");
   }
   if (!appServices.realtime) {
-    console.log(`- ${pc.yellow("realtime-gateway")} service not found, skipping realtime variable wiring`);
+    notices.push("realtime-gateway service not found, skipping realtime variable wiring");
   }
   if (!appServices.admin) {
-    console.log(`- ${pc.yellow("admin")} service not found, skipping admin variable wiring`);
+    notices.push("admin service not found, skipping admin variable wiring");
   }
   if (!infra.postgres) {
-    console.log(`- ${pc.yellow("postgres")} resource not found, DATABASE_URL wiring will be skipped`);
+    notices.push("postgres resource not found, DATABASE_URL wiring will be skipped");
   }
   if (!infra.rabbitmq) {
-    console.log(`- ${pc.yellow("rabbitmq")} resource not found, RABBITMQ_URL wiring will be skipped`);
+    notices.push("rabbitmq resource not found, RABBITMQ_URL wiring will be skipped");
   }
   if (!infra.objectStorage) {
-    console.log(`- ${pc.yellow("object-storage")} resource not found, S3 variable wiring will be skipped`);
+    notices.push("object-storage resource not found, S3 variable wiring will be skipped");
   }
 
-  if (appServices.api) {
+  if (variablesMode !== "replace" && appServices.api) {
     const existingApiVariables = await loadRailwayServiceVariables(
       config.projectDir,
       config.railwayContext.environmentRef,
@@ -2045,17 +3049,10 @@ async function wireRailwayVariables(config) {
     if (appServices.admin?.name) {
       variables.CORS_ALLOWED_ORIGINS = `https://${railwayReference(appServices.admin.name, "RAILWAY_PUBLIC_DOMAIN")}`;
     }
-    await applyRailwayVariables({
-      dryRun: config.dryRun,
-      environment: config.railwayContext.environmentRef,
-      projectDir: config.projectDir,
-      serviceName: appServices.api.name,
-      summary: config.summary,
-      variables,
-    });
+    mergeRailwayServiceVariables(serviceRegistry.api, variables);
   }
 
-  if (appServices.realtime) {
+  if (variablesMode !== "replace" && appServices.realtime) {
     const variables = {};
     Object.assign(variables, buildRealtimeDefaults(localEnv));
     if (infra.rabbitmq?.name) {
@@ -2067,17 +3064,10 @@ async function wireRailwayVariables(config) {
     if (appServices.admin?.name) {
       variables.CORS_ALLOWED_ORIGINS = `https://${railwayReference(appServices.admin?.name || "admin", "RAILWAY_PUBLIC_DOMAIN")}`;
     }
-    await applyRailwayVariables({
-      dryRun: config.dryRun,
-      environment: config.railwayContext.environmentRef,
-      projectDir: config.projectDir,
-      serviceName: appServices.realtime.name,
-      summary: config.summary,
-      variables,
-    });
+    mergeRailwayServiceVariables(serviceRegistry.realtime, variables);
   }
 
-  if (appServices.admin) {
+  if (variablesMode !== "replace" && appServices.admin) {
     const variables = {};
     Object.assign(variables, buildAdminDefaults(localEnv));
     if (appServices.api?.name) {
@@ -2086,13 +3076,58 @@ async function wireRailwayVariables(config) {
     if (appServices.realtime?.name) {
       variables.VITE_REALTIME_BASE_URL = `https://${railwayReference(appServices.realtime.name, "RAILWAY_PUBLIC_DOMAIN")}`;
     }
+    mergeRailwayServiceVariables(serviceRegistry.admin, variables);
+  }
+
+  if (declaredVariables.hasDeclaredVariables) {
+    if (Object.keys(declaredVariables.sharedVariables).length > 0) {
+      for (const entry of Object.values(serviceRegistry)) {
+        mergeRailwayServiceVariables(entry, declaredVariables.sharedVariables);
+      }
+    }
+
+    for (const [serviceKey, serviceVariables] of Object.entries(declaredVariables.variablesByService)) {
+      mergeRailwayServiceVariables(serviceRegistry[serviceKey], serviceVariables);
+    }
+  }
+
+  return {
+    appServices,
+    infra,
+    notices,
+    serviceRegistry,
+    variablesMode,
+  };
+}
+
+async function wireRailwayVariables(config) {
+  console.log(pc.bold("\nVariables"));
+  const plan = await resolveRailwayVariablePlan(config);
+
+  updateRailwayManifestAppServices(
+    config.manifest,
+    Object.values(plan.appServices).filter(Boolean),
+    ["admin", "api", "realtime"].map((key) => findRailwayAppServiceSpec(config.appServiceSpecs, key)).filter(Boolean),
+    config.manifest.projectSlug,
+  );
+
+  for (const notice of plan.notices) {
+    console.log(`- ${pc.yellow(notice)}`);
+  }
+
+  for (const [serviceKey, entry] of Object.entries(plan.serviceRegistry)) {
+    if (!entry?.name) {
+      continue;
+    }
+
     await applyRailwayVariables({
+      diff: config.diff,
       dryRun: config.dryRun,
       environment: config.railwayContext.environmentRef,
       projectDir: config.projectDir,
-      serviceName: appServices.admin.name,
+      serviceName: entry.name,
       summary: config.summary,
-      variables,
+      variables: entry.variables || {},
     });
   }
 }
@@ -2209,9 +3244,19 @@ async function applyRailwayVariables(config) {
     return;
   }
 
+  const existingVariables = config.diff
+    ? await loadRailwayServiceVariables(config.projectDir, config.environment, config.serviceName)
+    : {};
+  const variableDiff = config.diff ? buildRailwayVariableDiff(existingVariables, config.variables, { includeRemoved: false }) : null;
+
+  if (config.diff && variableDiff) {
+    printRailwayVariableDiff(config.serviceName, variableDiff);
+  }
+
   if (config.dryRun) {
     console.log(`- ${pc.cyan(config.serviceName)} would set ${entries.map(([key]) => key).join(", ")}`);
     config.summary.push({
+      diff: variableDiff,
       keys: entries.map(([key]) => key),
       serviceName: config.serviceName,
       status: "dry-run",
@@ -2228,10 +3273,267 @@ async function applyRailwayVariables(config) {
   ]);
   console.log(`- ${pc.cyan(config.serviceName)} set ${entries.map(([key]) => key).join(", ")}`);
   config.summary.push({
+    diff: variableDiff,
     keys: entries.map(([key]) => key),
     serviceName: config.serviceName,
     status: "updated",
   });
+}
+
+function buildRailwayVariableDiff(currentVariables, nextVariables, options = {}) {
+  const changes = [];
+  const includeRemoved = options.includeRemoved ?? true;
+  const keys = [...new Set([...Object.keys(nextVariables || {}), ...(includeRemoved ? Object.keys(currentVariables || {}) : [])])].sort();
+  for (const key of keys) {
+    const rawCurrent = currentVariables?.[key];
+    const rawNext = nextVariables?.[key];
+    const currentValue = typeof rawCurrent === "string" ? rawCurrent : rawCurrent === undefined || rawCurrent === null ? undefined : String(rawCurrent);
+    const nextValue = typeof rawNext === "string" ? rawNext : rawNext === undefined || rawNext === null ? undefined : String(rawNext);
+    if (nextValue === undefined && currentValue === undefined) {
+      continue;
+    }
+
+    let status = "unchanged";
+    if (currentValue === undefined) {
+      status = "added";
+    } else if (nextValue === undefined) {
+      status = "removed";
+    } else if (currentValue !== nextValue) {
+      status = "changed";
+    }
+
+    changes.push({ currentValue, key, nextValue, status });
+  }
+
+  return {
+    added: changes.filter((item) => item.status === "added"),
+    changed: changes.filter((item) => item.status === "changed"),
+    removed: changes.filter((item) => item.status === "removed"),
+    unchanged: changes.filter((item) => item.status === "unchanged"),
+  };
+}
+
+function printRailwayVariableDiff(serviceName, diff) {
+  const counts = [`${diff.added.length} added`, `${diff.changed.length} changed`, `${diff.unchanged.length} unchanged`].join(", ");
+  console.log(`- ${pc.cyan(serviceName)} diff: ${counts}`);
+
+  for (const item of [...diff.added, ...diff.changed]) {
+    const before = item.currentValue === undefined ? "<unset>" : formatRailwayVariableValue(item.key, item.currentValue);
+    const after = formatRailwayVariableValue(item.key, item.nextValue);
+    console.log(`  ${item.key}: ${before} -> ${after}`);
+  }
+}
+
+function sanitizeVariablesForOutput(variables, showSecrets = false) {
+  const sanitized = {};
+  for (const [key, value] of Object.entries(variables)) {
+    sanitized[key] = formatRailwayVariableValue(key, value, showSecrets);
+  }
+  return sanitized;
+}
+
+function formatRailwayVariableValue(key, value, showSecrets = false) {
+  if (value === undefined) {
+    return "<unset>";
+  }
+
+  const normalizedKey = String(key || "").toUpperCase();
+  if (!showSecrets && /(SECRET|PASSWORD|TOKEN|API_KEY|ACCESS_KEY|SECRET_KEY|ERLANG_COOKIE)/.test(normalizedKey)) {
+    return redactRailwayVariableValue(value);
+  }
+
+  return String(value);
+}
+
+function redactRailwayVariableValue(value) {
+  const textValue = String(value || "");
+  if (textValue.length <= 8) {
+    return "[redacted]";
+  }
+  return `${textValue.slice(0, 3)}...[redacted]...${textValue.slice(-2)}`;
+}
+
+function printResolvedRailwayConfig(payload) {
+  console.log(pc.bold("\nRailway config"));
+  console.log(`- Directory: ${pc.bold(payload.directory)}`);
+  console.log(`- Variables mode: ${pc.bold(payload.variablesMode)}`);
+  console.log(`- Environment key: ${pc.bold(payload.environment.configKey || "<none>")}`);
+  console.log(`- Railway environment: ${pc.bold(payload.environment.railwayEnvironment || "<linked default>")}`);
+
+  console.log(pc.bold("\nServices"));
+  for (const service of payload.services) {
+    console.log(`- ${pc.bold(service.key)} -> ${service.serviceName}`);
+    console.log(`  directory: ${service.directory}`);
+    if (service.dockerfile) {
+      console.log(`  dockerfile: ${service.dockerfile}`);
+    }
+    console.log(`  aliases: ${service.aliases.join(", ")}`);
+    const variableEntries = Object.entries(service.variables || {});
+    if (variableEntries.length === 0) {
+      console.log("  variables: <none>");
+      continue;
+    }
+    console.log("  variables:");
+    for (const [key, value] of variableEntries.sort(([left], [right]) => left.localeCompare(right))) {
+      console.log(`    ${key}=${value}`);
+    }
+  }
+}
+
+function buildRailwayConfigExportFilename(payload) {
+  const envSuffix = slugify(payload.environment.configKey || payload.environment.railwayEnvironment || "default") || "default";
+  return path.join(payload.directory, `.railway-config.${envSuffix}.json`);
+}
+
+async function readRailwayConfigSnapshot(filePath) {
+  const absolutePath = path.resolve(process.cwd(), filePath);
+  if (!(await fs.pathExists(absolutePath))) {
+    throw new Error(`Railway config snapshot not found: ${absolutePath}`);
+  }
+
+  const payload = await fs.readJson(absolutePath);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`Railway config snapshot is invalid: ${absolutePath}`);
+  }
+
+  if (!Array.isArray(payload.services)) {
+    throw new Error(`Railway config snapshot is missing a services array: ${absolutePath}`);
+  }
+
+  return payload;
+}
+
+function assertRailwaySnapshotImportable(snapshot) {
+  const redactedEntries = [];
+  for (const service of snapshot.services || []) {
+    for (const [key, value] of Object.entries(service.variables || {})) {
+      if (String(value || "").includes("[redacted]")) {
+        redactedEntries.push(`${service.key}.${key}`);
+      }
+    }
+  }
+
+  if (redactedEntries.length > 0) {
+    throw new Error(
+      `Snapshot contains redacted values and cannot be imported safely. Re-export with --show-secrets. Problem keys: ${redactedEntries.join(", ")}`,
+    );
+  }
+}
+
+function buildRailwayConfigSnapshotDiff(left, right) {
+  const leftServices = new Map((left.services || []).map((service) => [service.key, service]));
+  const rightServices = new Map((right.services || []).map((service) => [service.key, service]));
+  const serviceKeys = [...new Set([...leftServices.keys(), ...rightServices.keys()])].sort();
+
+  const services = serviceKeys.map((key) => {
+    const leftService = leftServices.get(key) || null;
+    const rightService = rightServices.get(key) || null;
+    return {
+      key,
+      metadata: {
+        directory: buildRailwayFieldDiff(leftService?.directory, rightService?.directory),
+        dockerfile: buildRailwayFieldDiff(leftService?.dockerfile, rightService?.dockerfile),
+        serviceName: buildRailwayFieldDiff(leftService?.serviceName, rightService?.serviceName),
+      },
+      status: !leftService ? "added" : !rightService ? "removed" : "present",
+      variables: buildRailwayVariableDiff(leftService?.variables || {}, rightService?.variables || {}),
+    };
+  });
+
+  return {
+    left: {
+      directory: left.directory,
+      environment: left.environment,
+    },
+    right: {
+      directory: right.directory,
+      environment: right.environment,
+    },
+    services,
+  };
+}
+
+function buildRailwayFieldDiff(leftValue, rightValue) {
+  return {
+    left: leftValue ?? null,
+    right: rightValue ?? null,
+    status: leftValue === rightValue ? "unchanged" : leftValue === undefined ? "added" : rightValue === undefined ? "removed" : "changed",
+  };
+}
+
+function printRailwayConfigSnapshotDiff(diff) {
+  console.log(pc.bold("\nRailway config diff"));
+  console.log(`- Left: ${pc.bold(formatRailwayDiffSide(diff.left))}`);
+  console.log(`- Right: ${pc.bold(formatRailwayDiffSide(diff.right))}`);
+
+  console.log(pc.bold("\nServices"));
+  for (const service of diff.services) {
+    const summary = [`${service.variables.added.length} added vars`, `${service.variables.changed.length} changed vars`, `${service.variables.removed.length} removed vars`].join(", ");
+    console.log(`- ${pc.bold(service.key)}: ${service.status}, ${summary}`);
+    for (const [field, fieldDiff] of Object.entries(service.metadata)) {
+      if (fieldDiff.status === "unchanged") {
+        continue;
+      }
+      console.log(`  ${field}: ${fieldDiff.left ?? "<unset>"} -> ${fieldDiff.right ?? "<unset>"}`);
+    }
+    for (const item of [...service.variables.added, ...service.variables.changed, ...service.variables.removed]) {
+      console.log(`  ${item.key}: ${item.currentValue ?? "<unset>"} -> ${item.nextValue ?? "<unset>"}`);
+    }
+  }
+}
+
+function sanitizeRailwayConfigSnapshotDiff(diff, showSecrets) {
+  if (showSecrets) {
+    return diff;
+  }
+
+  return {
+    ...diff,
+    services: diff.services.map((service) => ({
+      ...service,
+      variables: {
+        added: service.variables.added.map(sanitizeRailwayDiffEntry),
+        changed: service.variables.changed.map(sanitizeRailwayDiffEntry),
+        removed: service.variables.removed.map(sanitizeRailwayDiffEntry),
+        unchanged: service.variables.unchanged.map(sanitizeRailwayDiffEntry),
+      },
+    })),
+  };
+}
+
+function sanitizeRailwayDiffEntry(entry) {
+  return {
+    ...entry,
+    currentValue: formatRailwayVariableValue(entry.key, entry.currentValue),
+    nextValue: formatRailwayVariableValue(entry.key, entry.nextValue),
+  };
+}
+
+function formatRailwayDiffSide(side) {
+  const env = side.environment?.configKey || side.environment?.railwayEnvironment || "default";
+  return `${side.directory || "<snapshot>"} (${env})`;
+}
+
+function printRailwayImportSummary(config) {
+  console.log(pc.bold("\nRailway import"));
+  console.log(`- Source file: ${pc.bold(config.file)}`);
+  console.log(`- Directory: ${pc.bold(config.projectDir)}`);
+  if (config.railwayContext.environmentName || config.railwayContext.environmentId) {
+    console.log(`- Environment: ${pc.bold(config.railwayContext.environmentName || config.railwayContext.environmentId)}`);
+  }
+
+  console.log(pc.bold("\nVariables"));
+  if (config.summary.length === 0) {
+    console.log("- No variables were applied");
+  } else {
+    for (const item of config.summary) {
+      console.log(`- ${pc.bold(item.serviceName)}: ${item.status} ${item.keys.join(", ")}`);
+    }
+  }
+
+  if (config.dryRun) {
+    console.log("- Dry run only, Railway variables were not changed");
+  }
 }
 
 async function loadRailwayServiceVariables(projectDir, environment, serviceName) {
@@ -2373,37 +3675,16 @@ function normalizeRailwayVariables(input) {
   return normalized;
 }
 
-function updateRailwayManifestAppServices(manifest, services) {
+function updateRailwayManifestAppServices(manifest, services, appServiceSpecs, projectSlug) {
   manifest.appServices ||= {};
 
-  const entries = [
-    [
-      "api",
-      findRailwayService(
-        services,
-        ["api", "backend", "server"],
-        manifest.appServices.api?.serviceName || buildRailwayAppServiceName(manifest.projectSlug, "api"),
-      ),
-    ],
-    [
-      "admin",
-      findRailwayService(
-        services,
-        ["admin", "frontend", "web"],
-        manifest.appServices.admin?.serviceName || buildRailwayAppServiceName(manifest.projectSlug, "admin"),
-      ),
-    ],
-    [
-      "realtime",
-      findRailwayService(
-        services,
-        ["realtime-gateway", "realtime"],
-        manifest.appServices.realtime?.serviceName || buildRailwayAppServiceName(manifest.projectSlug, "realtime-gateway"),
-      ),
-    ],
-  ];
-
-  for (const [key, service] of entries) {
+  for (const spec of appServiceSpecs) {
+    const key = spec.key;
+    const service = findRailwayService(
+      services,
+      spec.aliases,
+      manifest.appServices[key]?.serviceName || resolveRailwayServiceName(spec, projectSlug || manifest.projectSlug),
+    );
     if (!service?.name) {
       continue;
     }
@@ -2585,6 +3866,33 @@ function printRailwaySetupSummary(config) {
 
   if (!getRailwayApiAuth()) {
     console.log(pc.yellow("\nNote: Set RAILWAY_API_TOKEN or RAILWAY_TOKEN to let future runs verify remote services before provisioning."));
+  }
+}
+
+function printRailwayDeploySummary(config) {
+  console.log(pc.bold("\nRailway deploy"));
+  console.log(`- Directory: ${pc.bold(config.projectDir)}`);
+  if (config.railwayContext.projectName || config.railwayContext.projectId) {
+    console.log(`- Project: ${pc.bold(config.railwayContext.projectName || config.railwayContext.projectId)}`);
+  }
+  if (config.railwayContext.environmentName || config.railwayContext.environmentId) {
+    console.log(`- Environment: ${pc.bold(config.railwayContext.environmentName || config.railwayContext.environmentId)}`);
+  }
+  console.log(`- Services: ${pc.bold(config.selectedServices.join(", "))}`);
+
+  console.log(pc.bold("\nDeployments"));
+  if (config.deploySummary.length === 0) {
+    console.log("- No application deployments were triggered");
+  } else {
+    for (const item of config.deploySummary) {
+      console.log(`- ${pc.bold(item.serviceName)}: ${item.status} from ${item.directory}/`);
+    }
+  }
+
+  if (config.dryRun) {
+    console.log(`- Dry run only, ${pc.bold(RAILWAY_MANIFEST_FILENAME)} was not written`);
+  } else {
+    console.log(`- Manifest written to ${pc.bold(RAILWAY_MANIFEST_FILENAME)} for future runs`);
   }
 }
 
@@ -2823,6 +4131,22 @@ async function loadProjectConfig(projectDir) {
   }
 
   return fs.readJson(configPath);
+}
+
+async function ensureRailwayAppServiceTargets(projectDir, appServiceSpecs) {
+  for (const spec of appServiceSpecs) {
+    const serviceDir = path.join(projectDir, spec.directory);
+    if (!(await fs.pathExists(serviceDir))) {
+      throw new Error(`Railway service \`${spec.key}\` points to a missing directory: ${spec.directory}`);
+    }
+
+    if (spec.dockerfile) {
+      const dockerfilePath = path.join(projectDir, spec.dockerfile);
+      if (!(await fs.pathExists(dockerfilePath))) {
+        throw new Error(`Railway service \`${spec.key}\` points to a missing Dockerfile: ${spec.dockerfile}`);
+      }
+    }
+  }
 }
 
 function resolveProjectSlug(projectDir, projectConfig) {

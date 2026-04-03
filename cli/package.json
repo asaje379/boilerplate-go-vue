@@ -12,7 +12,12 @@
 		"start": "node ./bin/asaje.js start .",
 		"doctor": "node ./bin/asaje.js doctor ..",
 		"setup-railway": "node ./bin/asaje.js setup-railway .. --yes",
+		"update-railway": "node ./bin/asaje.js update-railway .. --yes",
 		"sync-railway-env": "node ./bin/asaje.js sync-railway-env .. --yes",
+		"print-railway-config": "node ./bin/asaje.js print-railway-config ..",
+		"export-railway-config": "node ./bin/asaje.js export-railway-config ..",
+		"diff-railway-config": "node ./bin/asaje.js diff-railway-config .. --compare-environment production",
+		"deploy-railway": "node ./bin/asaje.js deploy-railway .. --yes",
 		"publish:check": "node ./bin/asaje.js publish .",
 		"check": "node --check ./bin/create-asaje-go-vue.js && node --check ./bin/asaje.js",
 		"pack:dry-run": "npm pack --dry-run"
