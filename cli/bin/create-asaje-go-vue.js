@@ -104,6 +104,12 @@ async function main() {
       return;
     }
 
+    if (invocation.command === "sync-project-config") {
+      await runSyncProjectConfig(invocation.argv);
+      outro(pc.green("Project config sync complete."));
+      return;
+    }
+
     if (invocation.command === "setup-railway") {
       await runSetupRailway(invocation.argv);
       outro(pc.green("Railway setup complete."));
@@ -202,6 +208,10 @@ function resolveInvocation(argv) {
       return { argv: rawArgs.slice(1), command: "update", title: "asaje update" };
     }
 
+    if (firstArg === "sync-project-config") {
+      return { argv: rawArgs.slice(1), command: "sync-project-config", title: "asaje sync-project-config" };
+    }
+
     if (firstArg === "setup-railway") {
       return { argv: rawArgs.slice(1), command: "setup-railway", title: "asaje setup-railway" };
     }
@@ -261,6 +271,10 @@ function resolveInvocation(argv) {
     return { argv: rawArgs.slice(1), command: "update", title: "create-asaje-go-vue" };
   }
 
+  if (firstArg === "sync-project-config") {
+    return { argv: rawArgs.slice(1), command: "sync-project-config", title: "create-asaje-go-vue" };
+  }
+
   if (firstArg === "setup-railway") {
     return { argv: rawArgs.slice(1), command: "setup-railway", title: "create-asaje-go-vue" };
   }
@@ -308,6 +322,7 @@ function printHelp() {
   console.log(`- ${pc.bold("asaje doctor [directory]")} check environment and project readiness`);
   console.log(`- ${pc.bold("asaje publish")} run npm publish checklist for the CLI package`);
   console.log(`- ${pc.bold("asaje update [directory]")} update managed boilerplate files from the template`);
+  console.log(`- ${pc.bold("asaje sync-project-config [directory]")} scan the project and rewrite Asaje config manifests`);
   console.log(`- ${pc.bold("asaje setup-railway [directory]")} provision Railway infrastructure for a project`);
   console.log(`- ${pc.bold("asaje update-railway [directory]")} reconcile Railway resources/services/vars from current config`);
   console.log(`- ${pc.bold("asaje sync-railway-env [directory]")} sync Railway app variables without provisioning`);
@@ -324,6 +339,7 @@ function printHelp() {
   console.log(`- ${pc.bold("asaje doctor ..")}`);
   console.log(`- ${pc.bold("asaje publish")}`);
   console.log(`- ${pc.bold("asaje update .. --dry-run")}`);
+  console.log(`- ${pc.bold("asaje sync-project-config .. --dry-run")}`);
   console.log(`- ${pc.bold("asaje setup-railway ..")}`);
   console.log(`- ${pc.bold("asaje update-railway ..")}`);
   console.log(`- ${pc.bold("asaje sync-railway-env ..")}`);
@@ -1207,6 +1223,34 @@ async function runUpdate(argv) {
   }
 }
 
+async function runSyncProjectConfig(argv) {
+  const args = await collectSyncProjectConfigAnswers(parseSyncProjectConfigArgs(argv));
+  const projectDir = path.resolve(process.cwd(), args.directory);
+
+  await ensureProjectStructure(projectDir);
+
+  const projectConfig = await loadProjectConfig(projectDir);
+  const manifest = await readRailwayManifest(projectDir);
+  const scanSummary = await scanProjectForManagedRailwayServices(projectDir);
+  const nextProjectConfig = buildSyncedProjectConfig(projectDir, projectConfig, scanSummary.serviceSpecs);
+  const nextManifest = buildSyncedRailwayManifest(manifest, nextProjectConfig, scanSummary.serviceSpecs);
+
+  if (!args.dryRun) {
+    await writeProjectConfigFile(projectDir, nextProjectConfig);
+    await writeRailwayManifest(projectDir, nextManifest);
+  }
+
+  printSyncProjectConfigSummary({
+    dryRun: args.dryRun,
+    manifest,
+    nextManifest,
+    nextProjectConfig,
+    previousProjectConfig: projectConfig,
+    projectDir,
+    scanSummary,
+  });
+}
+
 async function runSetupRailway(argv) {
   const args = parseSetupRailwayArgs(argv);
   const answers = await collectSetupRailwayAnswers(args);
@@ -1910,6 +1954,34 @@ function parseImportRailwayConfigArgs(argv) {
   return options;
 }
 
+function parseSyncProjectConfigArgs(argv) {
+  const options = {
+    directory: ".",
+    dryRun: false,
+    yes: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--yes" || arg === "-y") {
+      options.yes = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  return options;
+}
+
 function parseDiffRailwayConfigArgs(argv) {
   const options = {
     compareEnvironment: undefined,
@@ -2230,6 +2302,25 @@ async function collectImportRailwayConfigAnswers(args) {
 
   if (!confirmed) {
     throw new Error("Railway config import cancelled.");
+  }
+
+  return args;
+}
+
+async function collectSyncProjectConfigAnswers(args) {
+  if (args.yes || args.dryRun) {
+    return args;
+  }
+
+  const confirmed = await prompt(
+    confirm({
+      initialValue: true,
+      message: `Scan ${args.directory} and rewrite asaje.config.json / ${RAILWAY_MANIFEST_FILENAME}?`,
+    }),
+  );
+
+  if (!confirmed) {
+    throw new Error("Project config sync cancelled.");
   }
 
   return args;
@@ -4147,6 +4238,206 @@ async function ensureRailwayAppServiceTargets(projectDir, appServiceSpecs) {
       }
     }
   }
+}
+
+async function scanProjectForManagedRailwayServices(projectDir) {
+  const dockerfiles = [];
+  await collectDockerfiles(projectDir, "", dockerfiles);
+
+  const serviceSpecs = dockerfiles
+    .map((dockerfilePath) => buildScannedRailwayServiceSpec(projectDir, dockerfilePath))
+    .filter(Boolean)
+    .sort((left, right) => left.directory.localeCompare(right.directory));
+
+  return {
+    dockerfiles,
+    serviceSpecs,
+  };
+}
+
+async function collectDockerfiles(projectDir, relativeDir, results) {
+  const absoluteDir = path.join(projectDir, relativeDir);
+  const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const nextRelativePath = relativeDir ? path.posix.join(relativeDir, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      if (shouldSkipProjectScanDirectory(entry.name, nextRelativePath)) {
+        continue;
+      }
+
+      await collectDockerfiles(projectDir, nextRelativePath, results);
+      continue;
+    }
+
+    if (entry.isFile() && entry.name === "Dockerfile") {
+      results.push(nextRelativePath);
+    }
+  }
+}
+
+function shouldSkipProjectScanDirectory(name, relativePath) {
+  const normalized = String(name || "").trim();
+  if (!normalized) {
+    return false;
+  }
+
+  if ([".git", ".turbo", ".next", ".nuxt", "node_modules", "dist", "build", "coverage", "tmp", "vendor"].includes(normalized)) {
+    return true;
+  }
+
+  if (relativePath === "cli") {
+    return true;
+  }
+
+  return normalized.startsWith(".") && normalized !== ".well-known";
+}
+
+function buildScannedRailwayServiceSpec(projectDir, dockerfilePath) {
+  const directory = path.posix.dirname(dockerfilePath);
+  if (!directory || directory === ".") {
+    return null;
+  }
+
+  const inferred = inferRailwayServiceIdentity(directory);
+  return {
+    aliases: inferred.aliases,
+    baseName: inferred.baseName,
+    directory,
+    dockerfile: dockerfilePath,
+    key: inferred.key,
+    seedImage: inferred.key === "admin" ? "nginx:1.29-alpine" : "alpine:3.22",
+    serviceName: null,
+  };
+}
+
+function inferRailwayServiceIdentity(directory) {
+  const normalizedDirectory = directory.replace(/\/+$/g, "");
+  const directoryName = path.posix.basename(normalizedDirectory);
+  const normalizedName = normalizeRailwayServiceName(directoryName);
+
+  if (["api", "backend", "server"].includes(normalizedName)) {
+    return { aliases: ["api", "backend", "server"], baseName: "api", key: "api" };
+  }
+  if (["admin", "frontend", "web"].includes(normalizedName)) {
+    return { aliases: ["admin", "frontend", "web"], baseName: "admin", key: "admin" };
+  }
+  if (["realtime", "realtime-gateway"].includes(normalizedName)) {
+    return { aliases: ["realtime-gateway", "realtime"], baseName: "realtime-gateway", key: "realtime" };
+  }
+
+  const slug = slugify(directoryName);
+  return { aliases: [slug], baseName: slug, key: slug };
+}
+
+function buildSyncedProjectConfig(projectDir, projectConfig, scannedServiceSpecs) {
+  const nextConfig = {
+    ...(projectConfig || {}),
+    projectName: projectConfig?.projectName || path.basename(projectDir),
+    projectSlug: projectConfig?.projectSlug || slugify(path.basename(projectDir)),
+  };
+
+  const previousServices = resolveRailwayAppServiceSpecs(projectConfig);
+  const mergedServices = mergeScannedRailwayServices(previousServices, scannedServiceSpecs);
+
+  nextConfig.railway = {
+    ...(getRailwayConfig(projectConfig) || {}),
+    services: mergedServices.map((service) => ({
+      baseName: service.baseName,
+      directory: service.directory,
+      ...(service.dockerfile ? { dockerfile: service.dockerfile } : {}),
+      key: service.key,
+      ...(service.aliases?.length > 0 ? { aliases: service.aliases } : {}),
+      ...(service.serviceName ? { serviceName: service.serviceName } : {}),
+      ...(service.seedImage ? { seedImage: service.seedImage } : {}),
+    })),
+  };
+
+  return nextConfig;
+}
+
+function mergeScannedRailwayServices(previousServices, scannedServiceSpecs) {
+  const previousByKey = new Map(previousServices.map((service) => [service.key, service]));
+  const previousByDirectory = new Map(previousServices.map((service) => [service.directory, service]));
+
+  return scannedServiceSpecs.map((scanned) => {
+    const previous = previousByKey.get(scanned.key) || previousByDirectory.get(scanned.directory);
+    return {
+      aliases: uniqueStrings([...(previous?.aliases || []), ...scanned.aliases]),
+      baseName: previous?.baseName || scanned.baseName,
+      directory: scanned.directory,
+      dockerfile: scanned.dockerfile,
+      key: previous?.key || scanned.key,
+      seedImage: previous?.seedImage || scanned.seedImage,
+      serviceName: previous?.serviceName || null,
+    };
+  });
+}
+
+function buildSyncedRailwayManifest(manifest, nextProjectConfig, scannedServiceSpecs) {
+  const nextManifest = {
+    ...(manifest || {}),
+    appServices: {},
+    projectSlug: nextProjectConfig.projectSlug || manifest?.projectSlug || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const previousAppServices = manifest?.appServices || {};
+  const existingSpecs = resolveRailwayAppServiceSpecs(nextProjectConfig);
+  for (const spec of existingSpecs) {
+    const previousEntry =
+      previousAppServices[spec.key] ||
+      findRailwayManifestAppServiceByName(previousAppServices, resolveRailwayServiceName(spec, nextManifest.projectSlug));
+
+    nextManifest.appServices[spec.key] = {
+      serviceId: previousEntry?.serviceId || null,
+      serviceName: previousEntry?.serviceName || resolveRailwayServiceName(spec, nextManifest.projectSlug),
+    };
+  }
+
+  return nextManifest;
+}
+
+function findRailwayManifestAppServiceByName(appServices, serviceName) {
+  return Object.values(appServices || {}).find(
+    (entry) => normalizeRailwayServiceName(entry?.serviceName) === normalizeRailwayServiceName(serviceName),
+  ) || null;
+}
+
+async function writeProjectConfigFile(projectDir, projectConfig) {
+  const configPath = path.join(projectDir, "asaje.config.json");
+  await fs.writeJson(configPath, projectConfig, { spaces: 2 });
+}
+
+function printSyncProjectConfigSummary(config) {
+  const previousServices = new Map(resolveRailwayAppServiceSpecs(config.previousProjectConfig).map((service) => [service.key, service]));
+  const nextServices = config.nextProjectConfig.railway?.services || [];
+
+  console.log(pc.bold("\nProject config sync"));
+  console.log(`- Directory: ${pc.bold(config.projectDir)}`);
+  console.log(`- Dockerfiles found: ${pc.bold(String(config.scanSummary.dockerfiles.length))}`);
+
+  console.log(pc.bold("\nRailway services"));
+  if (nextServices.length === 0) {
+    console.log("- No managed Railway services detected");
+  } else {
+    for (const service of nextServices) {
+      const previous = previousServices.get(service.key);
+      const status = !previous ? "new" : previous.directory !== service.directory || previous.dockerfile !== service.dockerfile ? "updated" : "unchanged";
+      console.log(`- ${pc.bold(service.key)}: ${status} (${service.directory})`);
+    }
+  }
+
+  console.log(pc.bold("\nFiles"));
+  console.log(`- ${config.dryRun ? "would write" : "wrote"} ${pc.bold("asaje.config.json")}`);
+  console.log(`- ${config.dryRun ? "would write" : "wrote"} ${pc.bold(RAILWAY_MANIFEST_FILENAME)}`);
+  if (config.dryRun) {
+    console.log("- Dry run only, local files were not modified");
+  }
+}
+
+function uniqueStrings(values) {
+  return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
 function resolveProjectSlug(projectDir, projectConfig) {

@@ -1,6 +1,6 @@
 {
 	"name": "create-asaje-go-vue",
-	"version": "0.2.10",
+	"version": "0.3.0",
 	"description": "CLI to scaffold, configure, and run the Asaje Go + Vue boilerplate",
 	"type": "module",
 	"bin": {
@@ -11,6 +11,7 @@
 		"create": "node ./bin/create-asaje-go-vue.js",
 		"start": "node ./bin/asaje.js start .",
 		"doctor": "node ./bin/asaje.js doctor ..",
+		"sync-project-config": "node ./bin/asaje.js sync-project-config .. --dry-run",
 		"setup-railway": "node ./bin/asaje.js setup-railway .. --yes",
 		"update-railway": "node ./bin/asaje.js update-railway .. --yes",
 		"sync-railway-env": "node ./bin/asaje.js sync-railway-env .. --yes",

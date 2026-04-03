@@ -8,6 +8,7 @@ CLI package for scaffolding and running the Asaje Go + Vue boilerplate.
 
 | Command | Purpose |
 | --- | --- |
+| `asaje sync-project-config [directory]` | Scan the project, detect managed services, and rewrite `asaje.config.json` / `asaje.railway.json` |
 | `asaje setup-railway [directory]` | Provision infrastructure, create missing Railway services, wire variables, and deploy |
 | `asaje update-railway [directory]` | Reconcile an existing Railway project after changing `asaje.config.json` |
 | `asaje sync-railway-env [directory]` | Reapply Railway variables without reprovisioning infra |
@@ -64,6 +65,13 @@ npx -p create-asaje-go-vue@latest asaje publish
 npx -p create-asaje-go-vue@latest asaje update ./my-app --dry-run
 npx -p create-asaje-go-vue@latest asaje update ./my-app --yes
 npx -p create-asaje-go-vue@latest asaje update ./my-app --include admin/src/stores/session.ts,admin/src/services/http/session.ts
+```
+
+### Scan the project and regenerate local config manifests
+
+```bash
+npx -p create-asaje-go-vue@latest asaje sync-project-config ./my-app --dry-run
+npx -p create-asaje-go-vue@latest asaje sync-project-config ./my-app --yes
 ```
 
 ### Provision Railway resources
@@ -170,6 +178,15 @@ npx -p create-asaje-go-vue@latest asaje destroy-railway ./my-app --scope project
 - supports `--include` for explicitly overwriting extra files or directories from the template, such as `admin/src/stores/session.ts`
 - supports `--dry-run` to preview which files would be updated
 - updates `asaje.config.json` with the template repository and branch used for the update
+
+## What `asaje sync-project-config` does
+
+- scans the project tree for service-local `Dockerfile` files
+- infers Railway managed services from the detected directories
+- preserves existing service metadata when possible, while updating directories and Dockerfile paths from the scan
+- rewrites `asaje.config.json` with the merged `railway.services` list
+- rewrites `asaje.railway.json` so local service names line up with the current managed service list
+- supports `--dry-run` to preview the rewrite without changing local files
 
 ## What `asaje setup-railway` does
 
