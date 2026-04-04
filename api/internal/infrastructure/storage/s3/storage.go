@@ -32,13 +32,11 @@ func New(cfg config.Config) (*Storage, error) {
 		return nil, fmt.Errorf("OBJECT_STORAGE_PROVIDER must be one of: aws, minio")
 	}
 
-	loadOptions := []func(*awsconfig.LoadOptions) error{
-		awsconfig.WithRegion(cfg.ObjectStorageRegion),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.ObjectStorageAccessKeyID, cfg.ObjectStorageSecretAccessKey, "")),
-	}
+	loadOptions := newLoadOptions(cfg, cfg.ObjectStorageEndpointURL)
 
 	usePathStyle := false
 	publicBaseURL := ""
+	presignEndpoint := strings.TrimSpace(cfg.ObjectStorageEndpointURL)
 	if provider == "minio" {
 		endpoint := cfg.MinIOPublicURL
 		if endpoint == "" {
@@ -50,9 +48,10 @@ func New(cfg config.Config) (*Storage, error) {
 		}
 		publicBaseURL = strings.TrimRight(endpoint, "/") + "/" + cfg.ObjectStorageBucket
 		usePathStyle = true
-		loadOptions = append(loadOptions, awsconfig.WithBaseEndpoint(cfg.ObjectStorageEndpointURL))
+		if strings.TrimSpace(cfg.MinIOPublicURL) != "" {
+			presignEndpoint = strings.TrimSpace(cfg.MinIOPublicURL)
+		}
 	} else if cfg.ObjectStorageEndpointURL != "" {
-		loadOptions = append(loadOptions, awsconfig.WithBaseEndpoint(cfg.ObjectStorageEndpointURL))
 		publicBaseURL = strings.TrimRight(cfg.ObjectStorageEndpointURL, "/") + "/" + cfg.ObjectStorageBucket
 	} else {
 		publicBaseURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com", cfg.ObjectStorageBucket, cfg.ObjectStorageRegion)
@@ -68,14 +67,41 @@ func New(cfg config.Config) (*Storage, error) {
 			o.UsePathStyle = true
 		}
 	})
+	presignClient := awss3.NewPresignClient(client)
+	if presignEndpoint != "" && presignEndpoint != strings.TrimSpace(cfg.ObjectStorageEndpointURL) {
+		presignCfg, err := awsconfig.LoadDefaultConfig(context.Background(), newLoadOptions(cfg, presignEndpoint)...)
+		if err != nil {
+			return nil, err
+		}
+
+		publicClient := awss3.NewFromConfig(presignCfg, func(o *awss3.Options) {
+			if usePathStyle {
+				o.UsePathStyle = true
+			}
+		})
+		presignClient = awss3.NewPresignClient(publicClient)
+	}
 
 	return &Storage{
 		client:        client,
-		presign:       awss3.NewPresignClient(client),
+		presign:       presignClient,
 		bucket:        cfg.ObjectStorageBucket,
 		provider:      provider,
 		publicBaseURL: strings.TrimRight(publicBaseURL, "/"),
 	}, nil
+}
+
+func newLoadOptions(cfg config.Config, baseEndpoint string) []func(*awsconfig.LoadOptions) error {
+	loadOptions := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRegion(cfg.ObjectStorageRegion),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cfg.ObjectStorageAccessKeyID, cfg.ObjectStorageSecretAccessKey, "")),
+	}
+
+	if strings.TrimSpace(baseEndpoint) != "" {
+		loadOptions = append(loadOptions, awsconfig.WithBaseEndpoint(strings.TrimSpace(baseEndpoint)))
+	}
+
+	return loadOptions
 }
 
 func (s *Storage) UploadObject(ctx context.Context, input filedomain.UploadObjectInput) error {

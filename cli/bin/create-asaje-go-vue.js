@@ -1264,10 +1264,11 @@ async function runSetupRailway(argv) {
   const projectConfig = await loadProjectConfig(projectDir);
   const projectSlug = resolveProjectSlug(projectDir, projectConfig);
   const appServiceSpecs = resolveRailwayAppServiceSpecs(projectConfig);
+  const selectedSpecs = resolveDeployRailwaySpecs(answers.services, appServiceSpecs);
   const requestedRailwayEnvironment = resolveRequestedRailwayEnvironmentRef(projectConfig, answers.environment);
 
   await ensureProjectStructure(projectDir);
-  await ensureRailwayAppServiceTargets(projectDir, appServiceSpecs);
+  await ensureRailwayAppServiceTargets(projectDir, selectedSpecs);
   await ensureRailwayCliInstalled();
   await ensureRailwayAuthenticated(projectDir, requestedRailwayEnvironment);
   await ensureRailwayEnvironmentLinked(projectDir, requestedRailwayEnvironment);
@@ -1343,7 +1344,7 @@ async function runSetupRailway(argv) {
 
   console.log(pc.bold("\nApplication services"));
   manifest.appServices ||= {};
-  for (const spec of appServiceSpecs) {
+  for (const spec of selectedSpecs) {
     const serviceName = resolveRailwayServiceName(spec, projectSlug);
     const serviceResult = await ensureRailwayAppService({
       aliases: spec.aliases,
@@ -1388,7 +1389,7 @@ async function runSetupRailway(argv) {
     projectDir,
     projectSlug,
     railwayContext,
-    selectedSpecs: appServiceSpecs,
+    selectedSpecs,
     services: servicesAfterProvision,
   });
   deploySummary.push(...deploymentResults);
@@ -1758,10 +1759,12 @@ function parseDirectoryArgs(argv) {
 function parseSetupRailwayArgs(argv) {
   const options = {
     bucket: DEFAULT_RAILWAY_BUCKET,
+    bucketProvided: false,
     directory: ".",
     diff: false,
     dryRun: false,
     environment: undefined,
+    services: [],
     yes: false,
   };
   const positionals = [];
@@ -1786,12 +1789,14 @@ function parseSetupRailwayArgs(argv) {
 
     if (arg === "--bucket") {
       options.bucket = argv[index + 1] || options.bucket;
+      options.bucketProvided = true;
       index += 1;
       continue;
     }
 
     if (arg.startsWith("--bucket=")) {
       options.bucket = arg.split("=")[1] || options.bucket;
+      options.bucketProvided = true;
       continue;
     }
 
@@ -1806,10 +1811,33 @@ function parseSetupRailwayArgs(argv) {
       continue;
     }
 
+    if (arg === "--service") {
+      options.services.push(argv[index + 1] || "");
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--service=")) {
+      options.services.push(arg.split("=")[1] || "");
+      continue;
+    }
+
+    if (arg === "--services") {
+      options.services.push(...splitCsv(argv[index + 1] || ""));
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--services=")) {
+      options.services.push(...splitCsv(arg.split("=")[1] || ""));
+      continue;
+    }
+
     positionals.push(arg);
   }
 
   options.directory = positionals[0] || options.directory;
+  options.services = [...new Set(options.services.map((service) => service.trim()).filter(Boolean))];
   return options;
 }
 
@@ -2200,19 +2228,23 @@ function parseDestroyRailwayArgs(argv) {
 }
 
 async function collectSetupRailwayAnswers(args) {
+  const directory = args.directory;
+  const bucketState = await resolveSetupRailwayBucketState(args, directory);
+
   if (args.yes) {
     return {
-      bucket: args.bucket,
-      directory: args.directory,
+      bucket: bucketState.bucket,
+      directory,
       diff: args.diff,
       dryRun: args.dryRun,
       environment: args.environment,
+      services: args.services,
     };
   }
 
-  const directory = await prompt(
+  const selectedDirectory = await prompt(
     text({
-      defaultValue: args.directory,
+      defaultValue: directory,
       message: "Project directory to configure on Railway?",
       placeholder: ".",
       validate(value) {
@@ -2221,18 +2253,23 @@ async function collectSetupRailwayAnswers(args) {
     }),
   );
 
-  const bucket = await prompt(
-    text({
-      defaultValue: args.bucket,
-      message: "Object storage bucket name?",
-      placeholder: DEFAULT_RAILWAY_BUCKET,
-      validate(value) {
-        return /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value)
-          ? undefined
-          : "Use 3-63 lowercase letters, numbers, dots, or hyphens";
-      },
-    }),
-  );
+  const selectedBucketState = await resolveSetupRailwayBucketState(args, selectedDirectory);
+  let bucket = selectedBucketState.bucket;
+
+  if (!args.bucketProvided && !selectedBucketState.hasStoredBucket) {
+    bucket = await prompt(
+      text({
+        defaultValue: selectedBucketState.bucket,
+        message: "Object storage bucket name?",
+        placeholder: DEFAULT_RAILWAY_BUCKET,
+        validate(value) {
+          return /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value)
+            ? undefined
+            : "Use 3-63 lowercase letters, numbers, dots, or hyphens";
+        },
+      }),
+    );
+  }
 
   let environment = args.environment;
   if (!environment) {
@@ -2247,10 +2284,28 @@ async function collectSetupRailwayAnswers(args) {
 
   return {
     bucket,
-    directory,
+    directory: selectedDirectory,
     diff: args.diff,
     dryRun: args.dryRun,
     environment: environment?.trim() || undefined,
+    services: args.services,
+  };
+}
+
+async function resolveSetupRailwayBucketState(args, directory) {
+  if (args.bucketProvided) {
+    return {
+      bucket: args.bucket,
+      hasStoredBucket: true,
+    };
+  }
+
+  const projectDir = path.resolve(process.cwd(), directory || ".");
+  const manifest = await readRailwayManifest(projectDir);
+  const existingBucket = typeof manifest.bucket === "string" ? manifest.bucket.trim() : "";
+  return {
+    bucket: existingBucket || DEFAULT_RAILWAY_BUCKET,
+    hasStoredBucket: Boolean(existingBucket),
   };
 }
 
@@ -3256,15 +3311,27 @@ async function wireRailwayVariables(config) {
 
 async function loadRailwayLocalEnvDefaults(projectDir) {
   const [apiEnv, realtimeEnv, adminEnv] = await Promise.all([
-    tryReadEnvFile(path.join(projectDir, "api/.env")),
-    tryReadEnvFile(path.join(projectDir, "realtime-gateway/.env")),
-    tryReadEnvFile(path.join(projectDir, "admin/.env")),
+    loadServiceEnvDefaults(projectDir, "api"),
+    loadServiceEnvDefaults(projectDir, "realtime-gateway"),
+    loadServiceEnvDefaults(projectDir, "admin"),
   ]);
 
   return {
     admin: adminEnv,
     api: apiEnv,
     realtime: realtimeEnv,
+  };
+}
+
+async function loadServiceEnvDefaults(projectDir, serviceDir) {
+  const [exampleEnv, localEnv] = await Promise.all([
+    tryReadEnvFile(path.join(projectDir, serviceDir, ".env.example")),
+    tryReadEnvFile(path.join(projectDir, serviceDir, ".env")),
+  ]);
+
+  return {
+    ...exampleEnv,
+    ...localEnv,
   };
 }
 
