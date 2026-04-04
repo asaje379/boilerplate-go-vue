@@ -24,4 +24,4 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD ["./api", "serve"]
+CMD ["sh", "-c", "./api ${API_COMMAND:-serve}"]

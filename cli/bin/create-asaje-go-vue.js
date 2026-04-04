@@ -35,6 +35,12 @@ const DEFAULT_RAILWAY_APP_SERVICE_SPECS = [
     key: "api",
   },
   {
+    aliases: ["worker", "api-worker"],
+    baseName: "worker",
+    directory: "api",
+    key: "worker",
+  },
+  {
     aliases: ["admin", "frontend", "web"],
     baseName: "admin",
     directory: "admin",
@@ -3070,6 +3076,7 @@ async function resolveRailwayVariablePlan(config) {
     admin: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "admin"),
     api: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "api"),
     realtime: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "realtime"),
+    worker: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "worker"),
   };
 
   const serviceRegistry = {
@@ -3079,6 +3086,7 @@ async function resolveRailwayVariablePlan(config) {
     postgres: infra.postgres ? { name: infra.postgres.name, variables: {} } : null,
     rabbitmq: infra.rabbitmq ? { name: infra.rabbitmq.name, variables: {} } : null,
     realtime: appServices.realtime ? { name: appServices.realtime.name, variables: {} } : null,
+    worker: appServices.worker ? { name: appServices.worker.name, variables: {} } : null,
   };
 
   for (const spec of config.appServiceSpecs) {
@@ -3108,6 +3116,9 @@ async function resolveRailwayVariablePlan(config) {
   }
   if (!appServices.admin) {
     notices.push("admin service not found, skipping admin variable wiring");
+  }
+  if (!appServices.worker) {
+    notices.push("worker service not found, skipping worker variable wiring");
   }
   if (!infra.postgres) {
     notices.push("postgres resource not found, DATABASE_URL wiring will be skipped");
@@ -3168,6 +3179,26 @@ async function resolveRailwayVariablePlan(config) {
       variables.VITE_REALTIME_BASE_URL = `https://${railwayReference(appServices.realtime.name, "RAILWAY_PUBLIC_DOMAIN")}`;
     }
     mergeRailwayServiceVariables(serviceRegistry.admin, variables);
+  }
+
+  if (variablesMode !== "replace" && appServices.worker) {
+    const existingApiVariables = appServices.api?.name
+      ? await loadRailwayServiceVariables(config.projectDir, config.railwayContext.environmentRef, appServices.api.name)
+      : {};
+    const variables = {};
+    const sharedSecrets = buildRailwaySharedSecrets(localEnv, existingApiVariables);
+    Object.assign(variables, sharedSecrets.api);
+    variables.API_COMMAND = "worker";
+    if (infra.postgres?.name) {
+      variables.DATABASE_URL = railwayReference(infra.postgres.name, "DATABASE_URL");
+    }
+    if (infra.rabbitmq?.name) {
+      variables.RABBITMQ_URL = buildRabbitMqUrlReference(infra.rabbitmq.name);
+    }
+    if (infra.objectStorage?.name) {
+      Object.assign(variables, buildObjectStorageVariables(infra.objectStorage.name));
+    }
+    mergeRailwayServiceVariables(serviceRegistry.worker, variables);
   }
 
   if (declaredVariables.hasDeclaredVariables) {
@@ -3909,6 +3940,7 @@ function printRailwaySetupSummary(config) {
   if (config.railwayContext.environmentName || config.railwayContext.environmentId) {
     console.log(`- Environment: ${pc.bold(config.railwayContext.environmentName || config.railwayContext.environmentId)}`);
   }
+  console.log(`- Managed services: ${pc.bold("api, worker, realtime-gateway, admin")}`);
   console.log(`- Bucket: ${pc.bold(config.bucket)}`);
 
   console.log(pc.bold("\nResources"));
@@ -3969,6 +4001,7 @@ function printRailwayDeploySummary(config) {
   if (config.railwayContext.environmentName || config.railwayContext.environmentId) {
     console.log(`- Environment: ${pc.bold(config.railwayContext.environmentName || config.railwayContext.environmentId)}`);
   }
+  console.log(`- Default managed services: ${pc.bold("api, worker, realtime-gateway, admin")}`);
   console.log(`- Services: ${pc.bold(config.selectedServices.join(", "))}`);
 
   console.log(pc.bold("\nDeployments"));
@@ -4244,15 +4277,36 @@ async function scanProjectForManagedRailwayServices(projectDir) {
   const dockerfiles = [];
   await collectDockerfiles(projectDir, "", dockerfiles);
 
-  const serviceSpecs = dockerfiles
+  const scannedSpecs = dockerfiles
     .map((dockerfilePath) => buildScannedRailwayServiceSpec(projectDir, dockerfilePath))
     .filter(Boolean)
     .sort((left, right) => left.directory.localeCompare(right.directory));
+
+  const serviceSpecs = synthesizeDerivedRailwayServices(scannedSpecs);
 
   return {
     dockerfiles,
     serviceSpecs,
   };
+}
+
+function synthesizeDerivedRailwayServices(serviceSpecs) {
+  const nextSpecs = [...serviceSpecs];
+  const hasAPI = serviceSpecs.some((spec) => spec.key === "api" && spec.directory === "api");
+  const hasWorker = serviceSpecs.some((spec) => spec.key === "worker");
+  if (hasAPI && !hasWorker) {
+    nextSpecs.push({
+      aliases: ["worker", "api-worker"],
+      baseName: "worker",
+      directory: "api",
+      dockerfile: "api/Dockerfile",
+      key: "worker",
+      seedImage: "alpine:3.22",
+      serviceName: null,
+    });
+  }
+
+  return nextSpecs.sort((left, right) => `${left.directory}:${left.key}`.localeCompare(`${right.directory}:${right.key}`));
 }
 
 async function collectDockerfiles(projectDir, relativeDir, results) {

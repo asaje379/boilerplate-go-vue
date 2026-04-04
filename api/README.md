@@ -48,7 +48,7 @@ Serveur web Go base sur Gin, Gorm, Postgres, JWT, refresh tokens et Swaggo, orga
 ```bash
 cp .env.example .env
 go mod tidy
-go run github.com/swaggo/swag/cmd/swag@latest init -g main.go
+go run . swagger
 go run . serve
 go run . worker
 ```
@@ -66,12 +66,16 @@ go run . serve
 go run . worker
 go run . migrate
 go run . seed
+go run . swagger
 ```
 
 - `serve`: lance le serveur, applique les migrations et execute les seeds
 - `worker`: consomme les taches asynchrones RabbitMQ (emails OTP et futures taches)
 - `migrate`: cree la base si besoin et applique uniquement les migrations
 - `seed`: applique d'abord les migrations puis execute uniquement les seeds
+- `swagger`: regenere `docs/docs.go`, `docs/swagger.json` et `docs/swagger.yaml`
+
+Le conteneur `api` demarre `serve` par defaut. En deploiement, vous pouvez lancer le worker avec `API_COMMAND=worker`; il expose alors un healthcheck minimal sur `/api/v1/health`.
 
 Swagger UI est expose sur `http://localhost:8080/swagger/index.html`.
 
