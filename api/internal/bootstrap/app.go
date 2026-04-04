@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -103,6 +104,16 @@ type dependencies struct {
 }
 
 func newDependencies(cfg config.Config) (*dependencies, error) {
+	log.Printf(
+		"api bootstrap config: rabbitmq_enabled=%t rabbitmq=%s tasks_exchange=%s realtime_exchange=%s worker_queue=%s worker_consumer_tag=%s",
+		cfg.RabbitMQURL != "",
+		describeAMQPURL(cfg.RabbitMQURL),
+		cfg.RabbitMQTasksExchange,
+		cfg.RabbitMQRealtimeExchange,
+		cfg.RabbitMQWorkerQueue,
+		cfg.RabbitMQWorkerConsumerTag,
+	)
+
 	emailValidator, err := platformemail.NewValidator(cfg.AllowedEmails, cfg.AllowedDomains)
 	if err != nil {
 		return nil, err
@@ -215,7 +226,35 @@ func (d *dependencies) runMigrations() error {
 }
 
 func RunWorker(cfg config.Config) error {
+	log.Printf(
+		"worker bootstrap config: rabbitmq_enabled=%t rabbitmq=%s tasks_exchange=%s worker_queue=%s worker_consumer_tag=%s",
+		cfg.RabbitMQURL != "",
+		describeAMQPURL(cfg.RabbitMQURL),
+		cfg.RabbitMQTasksExchange,
+		cfg.RabbitMQWorkerQueue,
+		cfg.RabbitMQWorkerConsumerTag,
+	)
 	mailer := mailchimpmailer.New(cfg)
 	emailWorker := worker.NewEmailWorker(cfg.RabbitMQURL, cfg.RabbitMQTasksExchange, cfg.RabbitMQWorkerQueue, cfg.RabbitMQWorkerConsumerTag, 10, mailer)
 	return emailWorker.Run(context.Background())
+}
+
+func describeAMQPURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "invalid-url"
+	}
+
+	host := parsed.Hostname()
+	port := parsed.Port()
+	if port == "" {
+		port = "5672"
+	}
+
+	vhost := parsed.Path
+	if vhost == "" || vhost == "/" {
+		vhost = "/"
+	}
+
+	return fmt.Sprintf("%s://%s:%s%s", parsed.Scheme, host, port, vhost)
 }

@@ -3109,6 +3109,7 @@ function mergeRailwayServiceVariables(registryEntry, variables) {
 async function resolveRailwayVariablePlan(config) {
   const localEnv = await loadRailwayLocalEnvDefaults(config.projectDir);
   const variablesMode = resolveRailwayVariablesMode(config.projectConfig);
+  const builtInServiceKeys = new Set(["admin", "api", "realtime", "worker"]);
 
   const infra = {
     objectStorage: findRailwayService(
@@ -3254,6 +3255,17 @@ async function resolveRailwayVariablePlan(config) {
       Object.assign(variables, buildObjectStorageVariables(infra.objectStorage.name));
     }
     mergeRailwayServiceVariables(serviceRegistry.worker, variables);
+  }
+
+  if (variablesMode !== "replace") {
+    for (const spec of config.appServiceSpecs) {
+      if (builtInServiceKeys.has(spec.key)) {
+        continue;
+      }
+
+      const serviceDefaults = await loadServiceEnvDefaults(config.projectDir, spec.directory);
+      mergeRailwayServiceVariables(serviceRegistry[spec.key], serviceDefaults);
+    }
   }
 
   if (declaredVariables.hasDeclaredVariables) {
