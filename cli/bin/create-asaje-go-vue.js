@@ -1265,22 +1265,26 @@ async function writeEnvFiles(destinationDir, answers) {
     }),
   );
 
-  await fs.writeFile(
-    path.join(destinationDir, "landing/.env"),
-    toEnvContent({
-      API_BASE_URL: `http://localhost:${answers.apiPort}`,
-      PWA_BASE_URL: "http://localhost:4174",
-    }),
-  );
+  if (answers.includeLanding) {
+    await fs.writeFile(
+      path.join(destinationDir, "landing/.env"),
+      toEnvContent({
+        API_BASE_URL: `http://localhost:${answers.apiPort}`,
+        PWA_BASE_URL: "http://localhost:4174",
+      }),
+    );
+  }
 
-  await fs.writeFile(
-    path.join(destinationDir, "pwa/.env"),
-    toEnvContent({
-      VITE_APP_NAME: `${answers.appName} PWA`,
-      VITE_API_BASE_URL: `http://localhost:${answers.apiPort}/api/v1`,
-      VITE_REALTIME_BASE_URL: `http://localhost:${answers.realtimePort}`,
-    }),
-  );
+  if (answers.includePwa) {
+    await fs.writeFile(
+      path.join(destinationDir, "pwa/.env"),
+      toEnvContent({
+        VITE_APP_NAME: `${answers.appName} PWA`,
+        VITE_API_BASE_URL: `http://localhost:${answers.apiPort}/api/v1`,
+        VITE_REALTIME_BASE_URL: `http://localhost:${answers.realtimePort}`,
+      }),
+    );
+  }
 }
 
 async function writeGithubWorkflow(destinationDir, answers) {
@@ -5664,7 +5668,7 @@ async function ensureDestinationIsAvailable(destinationDir) {
 
   const files = await fs.readdir(destinationDir);
   if (files.length > 0) {
-    throw new Error(`Destination already exists and is not empty: ${destinationDir}`);
+    throw new Error(`Destination already exists and is not empty: ${destinationDir}. Choose another directory or empty it before running create.`);
   }
 }
 
