@@ -421,6 +421,7 @@ async function runCreate(argv) {
   console.log(pc.dim("\nScaffolding project from GitHub template..."));
   await cloneTemplate(answers.template, answers.branch, destinationDir);
   await cleanupTemplateFiles(destinationDir);
+  await ensureScaffoldedSurfaces(destinationDir, answers);
   await writeProjectConfig(destinationDir, answers);
   await writeEnvFiles(destinationDir, answers);
   await writeProjectReadme(destinationDir, answers);
@@ -1180,6 +1181,7 @@ function buildCreateRailwayEnvironments(answers) {
 }
 
 async function writeEnvFiles(destinationDir, answers) {
+  await fs.ensureDir(path.join(destinationDir, "admin"));
   await fs.writeFile(
     path.join(destinationDir, "admin/.env"),
     toEnvContent({
@@ -1248,8 +1250,10 @@ async function writeEnvFiles(destinationDir, answers) {
     RABBITMQ_WORKER_CONSUMER_TAG: `${answers.slug || "asaje-app"}-api-worker`,
   };
 
+  await fs.ensureDir(path.join(destinationDir, "api"));
   await fs.writeFile(path.join(destinationDir, "api/.env"), toEnvContent(apiEnv));
 
+  await fs.ensureDir(path.join(destinationDir, "realtime-gateway"));
   await fs.writeFile(
     path.join(destinationDir, "realtime-gateway/.env"),
     toEnvContent({
@@ -1266,6 +1270,7 @@ async function writeEnvFiles(destinationDir, answers) {
   );
 
   if (answers.includeLanding) {
+    await fs.ensureDir(path.join(destinationDir, "landing"));
     await fs.writeFile(
       path.join(destinationDir, "landing/.env"),
       toEnvContent({
@@ -1276,6 +1281,7 @@ async function writeEnvFiles(destinationDir, answers) {
   }
 
   if (answers.includePwa) {
+    await fs.ensureDir(path.join(destinationDir, "pwa"));
     await fs.writeFile(
       path.join(destinationDir, "pwa/.env"),
       toEnvContent({
@@ -5657,6 +5663,32 @@ async function cloneTemplate(template, branch, destinationDir) {
 async function cleanupTemplateFiles(destinationDir) {
   for (const relativePath of EXCLUDED_TEMPLATE_PATHS) {
     await fs.remove(path.join(destinationDir, relativePath));
+  }
+}
+
+async function ensureScaffoldedSurfaces(destinationDir, answers) {
+  const requiredDirectories = ["admin", "api", "realtime-gateway"];
+
+  if (answers.includeLanding) {
+    requiredDirectories.push("landing");
+  }
+  if (answers.includePwa) {
+    requiredDirectories.push("pwa");
+  }
+
+  const missing = [];
+  for (const relativeDir of requiredDirectories) {
+    if (!(await fs.pathExists(path.join(destinationDir, relativeDir)))) {
+      missing.push(relativeDir);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Template scaffold is missing expected directories: ${missing.join(", ")}. ` +
+      `This usually means the selected template/branch does not include the requested surfaces. ` +
+      `Try another branch or update the template repository before running create again.`,
+    );
   }
 }
 
