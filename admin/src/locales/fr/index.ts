@@ -6,6 +6,7 @@ import { controls } from "./controls";
 import { hero } from "./hero";
 import { home } from "./home";
 import { nav } from "./nav";
+import { notifications } from "./notifications";
 import { profile } from "./profile";
 import { users } from "./users";
 
@@ -18,6 +19,7 @@ export const fr = {
   hero,
   home,
   nav,
+  notifications,
   profile,
   users,
 };

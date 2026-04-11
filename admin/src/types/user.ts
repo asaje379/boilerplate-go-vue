@@ -16,6 +16,10 @@ export interface User {
   role: UserRole;
   twoFactorEnabled: boolean;
   updatedAt: string;
+  whatsAppPhone: string;
+  notifyEmail: boolean;
+  notifyInApp: boolean;
+  notifyWhatsapp: boolean;
 }
 
 export type UsersListResponse = PaginatedResponse<User>;
@@ -27,6 +31,7 @@ export interface CreateUserPayload {
   password: string;
   preferredLocale?: AppLocale;
   role: UserRole;
+  whatsAppPhone?: string;
 }
 
 export interface UpdateUserPayload {
@@ -34,12 +39,14 @@ export interface UpdateUserPayload {
   name: string;
   preferredLocale: AppLocale;
   role: UserRole;
+  whatsAppPhone?: string;
 }
 
 export interface UpdateProfilePayload {
   email: string;
   name: string;
   preferredLocale: AppLocale;
+  whatsAppPhone?: string;
 }
 
 export interface UpdateProfilePhotoPayload {
@@ -53,4 +60,11 @@ export interface ChangePasswordPayload {
 
 export interface UpdateSecurityPayload {
   twoFactorEnabled: boolean;
+}
+
+export interface UpdateNotificationPrefsPayload {
+  notifyEmail: boolean;
+  notifyInApp: boolean;
+  notifyWhatsapp: boolean;
+  whatsAppPhone?: string;
 }

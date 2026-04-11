@@ -44,6 +44,7 @@ type RegisterInput struct {
 	Name            string
 	Email           string
 	Password        string
+	WhatsAppPhone   string
 	Role            userdomain.Role
 	PreferredLocale userdomain.Locale
 }
@@ -163,6 +164,7 @@ func (s Service) BootstrapFirstAdmin(ctx context.Context, input RegisterInput) (
 		Name:            input.Name,
 		Email:           input.Email,
 		Password:        input.Password,
+		WhatsAppPhone:   input.WhatsAppPhone,
 		Role:            userdomain.RoleAdmin,
 		PreferredLocale: input.PreferredLocale,
 	})
@@ -198,6 +200,9 @@ func (s Service) Register(ctx context.Context, input RegisterInput) (*userdomain
 	if !role.IsValid() {
 		return nil, fmt.Errorf("%w: invalid role", appcommon.ErrValidation)
 	}
+	if !userdomain.IsValidWhatsAppPhone(strings.TrimSpace(input.WhatsAppPhone)) {
+		return nil, fmt.Errorf("%w: whatsapp phone must be in E.164 format", appcommon.ErrValidation)
+	}
 	if err := s.emailValidator.Validate(email); err != nil {
 		return nil, fmt.Errorf("%w: %s", appcommon.ErrValidation, err.Error())
 	}
@@ -216,6 +221,7 @@ func (s Service) Register(ctx context.Context, input RegisterInput) (*userdomain
 	}
 
 	newUser := &userdomain.User{ID: platformid.New(), Name: name, Email: email, PasswordHash: string(hash), PreferredLocale: preferredLocale, Role: role}
+	newUser.WhatsAppPhone = strings.TrimSpace(input.WhatsAppPhone)
 	newUser.TwoFactorEnabled = false
 	if err := s.users.Create(ctx, newUser); err != nil {
 		return nil, err

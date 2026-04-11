@@ -9,6 +9,8 @@ CLI package for scaffolding and running the Asaje Go + Vue boilerplate.
 | Command | Purpose |
 | --- | --- |
 | `asaje sync-project-config [directory]` | Scan the project, detect managed services, and rewrite `asaje.config.json` / `asaje.railway.json` |
+| `asaje sync-readme [directory]` | Regenerate the project `README.md` from `asaje.config.json` |
+| `asaje sync-github-workflow [directory]` | Regenerate the GitHub Actions Railway deploy workflow from `asaje.config.json` |
 | `asaje setup-railway [directory]` | Provision infrastructure, create missing Railway services, wire variables, and deploy |
 | `asaje update-railway [directory]` | Reconcile an existing Railway project after changing `asaje.config.json` |
 | `asaje sync-railway-env [directory]` | Reapply Railway variables without reprovisioning infra |
@@ -74,6 +76,20 @@ npx -p create-asaje-go-vue@latest asaje sync-project-config ./my-app --dry-run
 npx -p create-asaje-go-vue@latest asaje sync-project-config ./my-app --yes
 ```
 
+### Regenerate the GitHub Actions Railway workflow
+
+```bash
+npx -p create-asaje-go-vue@latest asaje sync-github-workflow ./my-app
+npx -p create-asaje-go-vue@latest asaje sync-github-workflow ./my-app --dry-run
+```
+
+### Regenerate the project README
+
+```bash
+npx -p create-asaje-go-vue@latest asaje sync-readme ./my-app
+npx -p create-asaje-go-vue@latest asaje sync-readme ./my-app --dry-run
+```
+
 ### Provision Railway resources
 
 ```bash
@@ -82,12 +98,14 @@ npx -p create-asaje-go-vue@latest asaje setup-railway ./my-app --dry-run
 npx -p create-asaje-go-vue@latest asaje update-railway ./my-app --yes
 ```
 
-By default this manages four Railway app services:
+By default this manages six Railway app services:
 
 - `api`
 - `worker`
 - `realtime-gateway`
 - `admin`
+- `landing`
+- `pwa`
 
 The default `worker` service reuses `api/Dockerfile` and starts with `API_COMMAND=worker`.
 
@@ -154,7 +172,7 @@ npx -p create-asaje-go-vue@latest asaje destroy-railway ./my-app --scope project
 - removes template-only files such as `cli/`
 - asks project setup questions for ports, storage, mail, seeds, and locale
 - writes `asaje.config.json`
-- generates `admin/.env`, `api/.env`, and `realtime-gateway/.env`
+- generates service-local `.env` files for `admin`, `api`, `realtime-gateway`, `landing`, and `pwa`
 - optionally installs dependencies and starts Docker infrastructure
 
 ## What `asaje start` does
@@ -163,7 +181,7 @@ npx -p create-asaje-go-vue@latest asaje destroy-railway ./my-app --scope project
 - creates missing `.env` files from examples when possible
 - optionally installs dependencies
 - optionally starts Docker infrastructure
-- starts any combination of `api`, `worker`, `realtime-gateway`, and `admin`
+- starts any combination of `api`, `worker`, `realtime-gateway`, `admin`, `landing`, and `pwa`
 - supports profiles: `full`, `backend-only`, `frontend-only`, and `custom`
 - streams service logs until you stop with `Ctrl+C`
 
@@ -205,9 +223,9 @@ npx -p create-asaje-go-vue@latest asaje destroy-railway ./my-app --scope project
 - reads the linked Railway project context
 - provisions PostgreSQL, RabbitMQ, and S3-compatible object storage on Railway
 - creates missing Railway app services for the configured app service list
-- defaults to `api`, `worker`, `realtime-gateway`, and `admin` when no custom Railway service config is present
+- defaults to `api`, `worker`, `realtime-gateway`, `admin`, `landing`, and `pwa` when no custom Railway service config is present
 - applies Railway variables from `asaje.config.json` when configured
-- keeps the legacy automatic variable wiring for `api`, `worker`, `realtime-gateway`, and `admin` unless `railway.variablesMode` is set to `replace`
+- keeps the automatic variable wiring for `api`, `worker`, `realtime-gateway`, `admin`, `landing`, and `pwa`; by default existing Railway values are preserved unless explicitly overridden in project config
 - triggers the first Railway deployment for each app service using the service-local `Dockerfile` and `railway.json`
 - generates missing app secrets such as `JWT_SECRET` and `SWAGGER_PASSWORD`, while reusing existing Railway values when present
 - supports `--dry-run` to preview provisioning and variable changes without applying them
@@ -228,7 +246,7 @@ npx -p create-asaje-go-vue@latest asaje destroy-railway ./my-app --scope project
 - reads the linked Railway project context
 - discovers existing Railway app and infra services
 - syncs configured Railway variables without provisioning infra resources
-- keeps the legacy automatic variable wiring for `api`, `worker`, `realtime-gateway`, and `admin` unless `railway.variablesMode` is set to `replace`
+- keeps the automatic variable wiring for `api`, `worker`, `realtime-gateway`, `admin`, `landing`, and `pwa`; by default existing Railway values are preserved unless explicitly overridden in project config
 - supports `--diff` to show what would be added or changed compared with the current Railway variables
 - supports `--dry-run` to preview variable changes without applying them
 
@@ -288,7 +306,7 @@ If the `railway` block is omitted, the CLI keeps the default built-in services a
   "projectName": "My App",
   "projectSlug": "my-app",
   "railway": {
-    "variablesMode": "merge",
+    "variablesMode": "preserve-remote",
     "services": [
       {
         "key": "api",
@@ -378,13 +396,15 @@ If the `railway` block is omitted, the CLI keeps the default built-in services a
 
 Supported top-level Railway fields:
 
-- `variablesMode`: `merge` by default; use `replace` to disable the legacy automatic variables and rely only on `railway.variables`
+- `variablesMode`: `preserve-remote` by default; use `sync-managed` to force CLI-managed values to overwrite Railway values, or `replace` to disable automatic generated variables and rely only on `railway.variables`
 - `services`: managed Railway application services deployed by `setup-railway` and `deploy-railway`
 - `variables.shared`: variables applied to every managed service
 - `variables.services.<key>`: variables applied only to one managed service
 - `environments.<name>.railwayEnvironment`: optional mapping from a logical config key like `production` to the real Railway environment name or id
 - `environments.<name>.variables.shared`: shared variables only for that deployment environment
 - `environments.<name>.variables.services.<key>`: service-specific overrides only for that deployment environment
+- `ci.githubActions.deployRailway.enabled`: generate a GitHub Actions workflow for Railway deploys
+- `ci.githubActions.deployRailway.branchEnvironments`: map Git branches to logical Railway environments such as `develop -> staging` and `main -> production`
 
 Supported fields per service in `railway.services`:
 
@@ -396,12 +416,19 @@ Supported fields per service in `railway.services`:
 - `seedImage`: optional bootstrap image used only when `setup-railway` needs to create the Railway service before the first deploy
 - `dockerfile`: optional project-relative Dockerfile path validated by the CLI for documentation/safety; Railway still builds from the declared `directory`
 
-How variable merging works:
+How variable resolution works:
 
 - `railway.variables.shared`
 - then `railway.variables.services.<key>`
 - then `railway.environments.<name>.variables.shared`
 - then `railway.environments.<name>.variables.services.<key>`
+
+Variable modes:
+
+- `preserve-remote`: existing Railway values win over generated CLI defaults; explicit values declared in `asaje.config.json` still override Railway
+- `sync-managed`: CLI-managed values overwrite the matching Railway variables, while undeclared Railway-only variables are left alone
+- `replace`: disables generated defaults and only applies the declarative variables defined in `asaje.config.json`
+- legacy `merge` is still accepted as an alias of `sync-managed`
 
 Environment-aware usage:
 
@@ -414,11 +441,19 @@ Notes:
 - the service directory should contain the `Dockerfile` Railway will build from
 - custom services are provisioned and deployed by `setup-railway` and `deploy-railway`
 - `sync-railway-env` can now apply declarative variables to any managed service key, including custom services
-- with `variablesMode: "merge"`, the core services `api`, `worker`, `realtime-gateway`, and `admin` still receive the legacy generated defaults unless you override them
+- with `variablesMode: "preserve-remote"`, the core services still receive generated defaults only for missing Railway variables, while explicit `railway.variables` entries override the remote values
+- with `variablesMode: "sync-managed"`, the core services `api`, `worker`, `realtime-gateway`, `admin`, `landing`, and `pwa` receive the CLI-managed values even when Railway already has a different value
 - the default `worker` service reuses the `api` image and starts with `API_COMMAND=worker`
 - with `variablesMode: "replace"`, only the variables declared in `asaje.config.json` are applied
 - after changing the Railway config, run `asaje update-railway ./my-app --yes` to reconcile the linked Railway project with the new configuration
 - you can target a custom service with `asaje deploy-railway ./my-app --service worker`
+
+GitHub Actions deploy workflow notes:
+
+- the generated workflow triggers only on the configured branches
+- it detects changes per service directory and redeploys only the impacted Railway services
+- config changes trigger `asaje sync-railway-env` before service deploys
+- add `RAILWAY_TOKEN` as a GitHub repository secret before enabling the workflow in production
 
 ## What `asaje destroy-railway` does
 

@@ -85,11 +85,15 @@ func runSwagger() error {
 }
 
 func runWorker(cfg config.Config) error {
+	if !cfg.WorkerHTTPEnabled {
+		return bootstrap.RunWorker(cfg)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	healthServer := &http.Server{
-		Addr:    ":" + cfg.Port,
+		Addr:    ":" + cfg.WorkerHTTPPort,
 		Handler: workerHealthHandler(),
 	}
 

@@ -16,6 +16,10 @@ type User struct {
 	ID                 string
 	Name               string
 	Email              string
+	WhatsAppPhone      string
+	NotifyEmail        bool
+	NotifyInApp        bool
+	NotifyWhatsapp     bool
 	PasswordHash       string
 	MustChangePassword bool
 	PreferredLocale    Locale

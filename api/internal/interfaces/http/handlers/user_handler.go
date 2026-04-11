@@ -23,6 +23,7 @@ type CreateUserRequest struct {
 	Email              string `json:"email" binding:"required,email"`
 	Name               string `json:"name" binding:"required"`
 	Password           string `json:"password" binding:"required,min=8"`
+	WhatsAppPhone      string `json:"whatsAppPhone"`
 	MustChangePassword bool   `json:"mustChangePassword"`
 	PreferredLocale    string `json:"preferredLocale" binding:"required"`
 	Role               string `json:"role" binding:"required"`
@@ -31,6 +32,7 @@ type CreateUserRequest struct {
 type UpdateUserRequest struct {
 	Email           string `json:"email" binding:"required,email"`
 	Name            string `json:"name" binding:"required"`
+	WhatsAppPhone   string `json:"whatsAppPhone"`
 	PreferredLocale string `json:"preferredLocale" binding:"required"`
 	Role            string `json:"role" binding:"required"`
 }
@@ -38,6 +40,7 @@ type UpdateUserRequest struct {
 type UpdateCurrentProfileRequest struct {
 	Email           string `json:"email" binding:"required,email"`
 	Name            string `json:"name" binding:"required"`
+	WhatsAppPhone   string `json:"whatsAppPhone"`
 	PreferredLocale string `json:"preferredLocale" binding:"required"`
 }
 
@@ -52,6 +55,13 @@ type ChangePasswordRequest struct {
 
 type UpdateSecurityRequest struct {
 	TwoFactorEnabled bool `json:"twoFactorEnabled"`
+}
+
+type UpdateNotificationPrefsRequest struct {
+	NotifyEmail    bool   `json:"notifyEmail"`
+	NotifyInApp    bool   `json:"notifyInApp"`
+	NotifyWhatsapp bool   `json:"notifyWhatsapp"`
+	WhatsAppPhone  string `json:"whatsAppPhone"`
 }
 
 func NewUserHandler(userService appuser.Service, fileService appfile.Service) UserHandler {
@@ -114,6 +124,7 @@ func (h UserHandler) UpdateCurrentProfile(c *gin.Context) {
 		ActorID:         current.ID,
 		Email:           request.Email,
 		Name:            request.Name,
+		WhatsAppPhone:   request.WhatsAppPhone,
 		PreferredLocale: userdomain.Locale(request.PreferredLocale),
 	})
 	if err != nil {
@@ -198,6 +209,34 @@ func (h UserHandler) UpdateSecurity(c *gin.Context) {
 	c.JSON(http.StatusOK, h.toUserResponse(c, updated, current.ID, current.Role))
 }
 
+func (h UserHandler) UpdateNotificationPrefs(c *gin.Context) {
+	current, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: appcommon.ErrUnauthorized.Error()})
+		return
+	}
+
+	var request UpdateNotificationPrefsRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	updated, err := h.userService.UpdateNotificationPrefs(c.Request.Context(), appuser.UpdateNotificationPrefsInput{
+		ActorID:        current.ID,
+		NotifyEmail:    request.NotifyEmail,
+		NotifyInApp:    request.NotifyInApp,
+		NotifyWhatsapp: request.NotifyWhatsapp,
+		WhatsAppPhone:  request.WhatsAppPhone,
+	})
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, h.toUserResponse(c, updated, current.ID, current.Role))
+}
+
 // List godoc
 // @Summary List users
 // @Description Returns all users. Admin only.
@@ -206,8 +245,8 @@ func (h UserHandler) UpdateSecurity(c *gin.Context) {
 // @Security BearerAuth
 // @Param page query int false "Page number"
 // @Param limit query int false "Page size"
-// @Param search query string false "Search on name, email, role"
-// @Param sortBy query string false "Sort field" Enums(createdAt,updatedAt,name,email,role)
+// @Param search query string false "Search on name, email, whatsapp phone, role"
+// @Param sortBy query string false "Sort field" Enums(createdAt,updatedAt,name,email,whatsAppPhone,role)
 // @Param sortOrder query string false "Sort order" Enums(asc,desc)
 // @Success 200 {object} presenter.PaginatedUsersResponse
 // @Failure 401 {object} ErrorResponse
@@ -222,11 +261,12 @@ func (h UserHandler) List(c *gin.Context) {
 	}
 
 	params, err := queryhelper.ParseListParams(c, "createdAt", map[string]struct{}{
-		"createdAt": {},
-		"updatedAt": {},
-		"name":      {},
-		"email":     {},
-		"role":      {},
+		"createdAt":     {},
+		"updatedAt":     {},
+		"name":          {},
+		"email":         {},
+		"whatsAppPhone": {},
+		"role":          {},
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
@@ -274,6 +314,7 @@ func (h UserHandler) Create(c *gin.Context) {
 		Email:              request.Email,
 		Name:               request.Name,
 		Password:           request.Password,
+		WhatsAppPhone:      request.WhatsAppPhone,
 		MustChangePassword: request.MustChangePassword,
 		PreferredLocale:    userdomain.Locale(request.PreferredLocale),
 		Role:               userdomain.Role(request.Role),
@@ -360,6 +401,7 @@ func (h UserHandler) Update(c *gin.Context) {
 		ActorRole:       current.Role,
 		Email:           request.Email,
 		Name:            request.Name,
+		WhatsAppPhone:   request.WhatsAppPhone,
 		PreferredLocale: userdomain.Locale(request.PreferredLocale),
 		Role:            userdomain.Role(request.Role),
 		UserID:          userID,

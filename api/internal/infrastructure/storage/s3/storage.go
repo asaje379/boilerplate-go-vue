@@ -128,6 +128,32 @@ func (s *Storage) DeleteObject(ctx context.Context, key string) error {
 	return err
 }
 
+func (s *Storage) GetObject(ctx context.Context, key string) (*filedomain.GetObjectOutput, error) {
+	result, err := s.client.GetObject(ctx, &awss3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	contentType := "application/octet-stream"
+	if result.ContentType != nil && strings.TrimSpace(*result.ContentType) != "" {
+		contentType = strings.TrimSpace(*result.ContentType)
+	}
+
+	size := int64(0)
+	if result.ContentLength != nil {
+		size = *result.ContentLength
+	}
+
+	return &filedomain.GetObjectOutput{
+		Body:        result.Body,
+		ContentType: contentType,
+		Size:        size,
+	}, nil
+}
+
 func (s *Storage) GetSignedDownloadURL(ctx context.Context, key string, ttl time.Duration, fileName string) (string, error) {
 	result, err := s.presign.PresignGetObject(ctx, &awss3.GetObjectInput{
 		Bucket:                     aws.String(s.bucket),

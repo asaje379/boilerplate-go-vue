@@ -11,6 +11,7 @@ type Repository interface {
 	CountAdmins(ctx context.Context) (int64, error)
 	GetByID(ctx context.Context, id string) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
+	ListIDsByRole(ctx context.Context, role Role) ([]string, error)
 	List(ctx context.Context, params appcommon.ListParams) ([]User, int64, error)
 	Count(ctx context.Context) (int64, error)
 	Update(ctx context.Context, user *User) error

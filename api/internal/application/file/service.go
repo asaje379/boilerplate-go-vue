@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"mime/multipart"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,12 +20,13 @@ import (
 )
 
 type Service struct {
-	files          filedomain.Repository
-	storage        filedomain.Storage
-	bucketBasePath string
-	signedURLTTL   time.Duration
-	maxSizeBytes   int64
-	events         appcommon.EventPublisher
+	files            filedomain.Repository
+	storage          filedomain.Storage
+	bucketBasePath   string
+	publicAPIBaseURL string
+	signedURLTTL     time.Duration
+	maxSizeBytes     int64
+	events           appcommon.EventPublisher
 }
 
 type UploadInput struct {
@@ -41,8 +43,8 @@ type ListInput struct {
 	Params    appcommon.ListParams
 }
 
-func NewService(files filedomain.Repository, storage filedomain.Storage, bucketBasePath string, signedURLTTL time.Duration, maxSizeBytes int64, events appcommon.EventPublisher) Service {
-	return Service{files: files, storage: storage, bucketBasePath: strings.Trim(strings.TrimSpace(bucketBasePath), "/"), signedURLTTL: signedURLTTL, maxSizeBytes: maxSizeBytes, events: events}
+func NewService(files filedomain.Repository, storage filedomain.Storage, bucketBasePath, publicAPIBaseURL string, signedURLTTL time.Duration, maxSizeBytes int64, events appcommon.EventPublisher) Service {
+	return Service{files: files, storage: storage, bucketBasePath: strings.Trim(strings.TrimSpace(bucketBasePath), "/"), publicAPIBaseURL: strings.TrimRight(strings.TrimSpace(publicAPIBaseURL), "/"), signedURLTTL: signedURLTTL, maxSizeBytes: maxSizeBytes, events: events}
 }
 
 func (s Service) Upload(ctx context.Context, input UploadInput) (*filedomain.File, error) {
@@ -200,22 +202,93 @@ func (s Service) GetAccessibleDownloadURL(ctx context.Context, id, actorID strin
 		return "", nil, err
 	}
 
-	if file.Visibility == filedomain.VisibilityPublic {
-		if url := s.storage.GetPublicURL(file.StorageKey); url != "" {
-			return url, file, nil
+	if file.Visibility != filedomain.VisibilityPublic {
+		if actorRole != userdomain.RoleAdmin && file.UploadedByID != actorID {
+			return "", nil, appcommon.ErrForbidden
 		}
 	}
 
-	if actorRole != userdomain.RoleAdmin && file.UploadedByID != actorID {
-		return "", nil, appcommon.ErrForbidden
-	}
+	return s.buildMediaURL(file.ID), file, nil
 
-	url, err := s.storage.GetSignedDownloadURL(ctx, file.StorageKey, s.signedURLTTL, file.OriginalName)
+}
+
+func (s Service) GetFileURL(ctx context.Context, id string) (string, error) {
+	_, err := s.files.GetByID(ctx, id)
 	if err != nil {
-		return "", nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", appcommon.ErrNotFound
+		}
+		return "", err
 	}
 
-	return url, file, nil
+	return s.buildMediaURL(id), nil
+}
+
+func (s Service) buildMediaURL(fileID string) string {
+	mediaPath := fmt.Sprintf("/api/v1/media/%s", fileID)
+	if s.publicAPIBaseURL == "" {
+		return mediaPath
+	}
+
+	base, err := url.Parse(s.publicAPIBaseURL)
+	if err != nil {
+		return mediaPath
+	}
+
+	base.Path = strings.TrimRight(base.Path, "/") + mediaPath
+	return base.String()
+}
+
+func (s Service) StreamAnyFile(ctx context.Context, id string) (*filedomain.GetObjectOutput, *filedomain.File, error) {
+	file, err := s.files.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, appcommon.ErrNotFound
+		}
+		return nil, nil, err
+	}
+
+	obj, err := s.storage.GetObject(ctx, file.StorageKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return obj, file, nil
+}
+
+func (s Service) StreamFile(ctx context.Context, id, actorID string, actorRole userdomain.Role) (*filedomain.GetObjectOutput, *filedomain.File, error) {
+	file, err := s.GetByID(ctx, id, actorID, actorRole)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	obj, err := s.storage.GetObject(ctx, file.StorageKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return obj, file, nil
+}
+
+func (s Service) StreamPublicFile(ctx context.Context, id string) (*filedomain.GetObjectOutput, *filedomain.File, error) {
+	file, err := s.files.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, appcommon.ErrNotFound
+		}
+		return nil, nil, err
+	}
+
+	if file.Visibility != filedomain.VisibilityPublic {
+		return nil, nil, appcommon.ErrForbidden
+	}
+
+	obj, err := s.storage.GetObject(ctx, file.StorageKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return obj, file, nil
 }
 
 func (s Service) Delete(ctx context.Context, id, actorID string, actorRole userdomain.Role) error {

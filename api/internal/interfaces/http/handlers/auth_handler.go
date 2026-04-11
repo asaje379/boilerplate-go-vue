@@ -20,6 +20,7 @@ type RegisterRequest struct {
 	Name            string `json:"name" binding:"required" example:"Jane Doe"`
 	Email           string `json:"email" binding:"required,email" example:"jane@example.com"`
 	Password        string `json:"password" binding:"required,min=8" example:"supersecret"`
+	WhatsAppPhone   string `json:"whatsAppPhone" example:"+221770000000"`
 	PreferredLocale string `json:"preferredLocale,omitempty" example:"fr" enums:"fr,en"`
 }
 
@@ -51,6 +52,7 @@ type BootstrapFirstAdminRequest struct {
 	Name            string `json:"name" binding:"required" example:"Jane Doe"`
 	Email           string `json:"email" binding:"required,email" example:"jane@example.com"`
 	Password        string `json:"password" binding:"required,min=8" example:"supersecret123"`
+	WhatsAppPhone   string `json:"whatsAppPhone" example:"+221770000000"`
 	PreferredLocale string `json:"preferredLocale,omitempty" example:"fr" enums:"fr,en"`
 }
 
@@ -127,6 +129,7 @@ func (h AuthHandler) BootstrapFirstAdmin(c *gin.Context) {
 		Name:            request.Name,
 		Email:           request.Email,
 		Password:        request.Password,
+		WhatsAppPhone:   request.WhatsAppPhone,
 		Role:            userdomain.RoleAdmin,
 		PreferredLocale: userdomain.Locale(request.PreferredLocale),
 	})
@@ -165,6 +168,7 @@ func (h AuthHandler) Register(c *gin.Context) {
 		Name:            request.Name,
 		Email:           request.Email,
 		Password:        request.Password,
+		WhatsAppPhone:   request.WhatsAppPhone,
 		Role:            userdomain.RoleUser,
 		PreferredLocale: userdomain.Locale(request.PreferredLocale),
 	})

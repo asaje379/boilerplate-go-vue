@@ -12,9 +12,10 @@ import {
   AppResourcePage,
   DataTable,
   FormCheckbox,
-  FormInput,
-  FormPassword,
-  FormSelect,
+    FormInput,
+    FormPassword,
+    PhoneInput,
+    FormSelect,
   ResourceFormDialog,
   type DataTableLoadParams,
 } from "@/components/system";
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { useResourceCrud } from "@/composables";
 import { usersApi } from "@/services/api/users.api";
 import { supportedLocales } from "@/lib/i18n";
+import { isValidWhatsAppPhone } from "@/lib/phone";
 import { useRealtimeStore } from "@/stores/realtime";
 
 type UsersTableInstance = {
@@ -64,6 +66,7 @@ const {
     password: "",
     preferredLocale: "fr",
     role: "user",
+    whatsAppPhone: "",
   },
   createTitle: t("users.dialog.createTitle"),
   editDescription: t("users.dialog.editDescription"),
@@ -72,6 +75,7 @@ const {
     name: user.name,
     preferredLocale: user.preferredLocale,
     role: user.role,
+    whatsAppPhone: user.whatsAppPhone,
   }),
   editTitle: t("users.dialog.editTitle"),
 });
@@ -84,6 +88,7 @@ const createSchema = toTypedSchema(
     password: z.string().min(8, t("auth.validation.min8")),
     preferredLocale: z.enum(["fr", "en"]),
     role: z.enum(["admin", "user"]),
+    whatsAppPhone: z.string().max(32).optional().refine(isValidWhatsAppPhone, t("auth.validation.whatsAppPhoneInvalid")),
   }),
 );
 
@@ -93,6 +98,7 @@ const updateSchema = toTypedSchema(
     name: z.string().min(2, t("auth.validation.nameRequired")),
     preferredLocale: z.enum(["fr", "en"]),
     role: z.enum(["admin", "user"]),
+    whatsAppPhone: z.string().max(32).optional().refine(isValidWhatsAppPhone, t("auth.validation.whatsAppPhoneInvalid")),
   }),
 );
 
@@ -104,6 +110,11 @@ const columns: ColumnDef<User>[] = [
   {
     accessorKey: "email",
     header: t("users.columns.email"),
+  },
+  {
+    accessorKey: "whatsAppPhone",
+    header: t("users.columns.whatsAppPhone"),
+    cell: ({ row }) => row.original.whatsAppPhone || "-",
   },
   {
     accessorKey: "role",
@@ -256,7 +267,7 @@ async function submitUpdate(values: unknown) {
     @invalid-submit="handleInvalidSubmit"
     @submit="handleUserSubmit"
   >
-    <template #default="{ isSubmitting }">
+    <template #default="{ isSubmitting, setFieldValue, values }">
       <div class="space-y-4">
         <FormInput
           name="name"
@@ -267,6 +278,12 @@ async function submitUpdate(values: unknown) {
           name="email"
           :label="$t('users.form.emailLabel')"
           :placeholder="$t('users.form.emailPlaceholder')"
+        />
+        <PhoneInput
+          :label="$t('users.form.whatsAppPhoneLabel')"
+          :model-value="String(values.whatsAppPhone ?? '')"
+          :placeholder="$t('users.form.whatsAppPhonePlaceholder')"
+          @update:model-value="(value) => setFieldValue('whatsAppPhone', value)"
         />
         <FormPassword
           v-if="!editingUser"

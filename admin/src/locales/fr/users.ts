@@ -8,6 +8,7 @@ export const users = {
   columns: {
     name: "Nom",
     email: "Email",
+    whatsAppPhone: "WhatsApp",
     role: "Rôle",
     status: "Statut",
     actions: "Actions",
@@ -32,6 +33,8 @@ export const users = {
     namePlaceholder: "Jean Dupont",
     emailLabel: "Email",
     emailPlaceholder: "jean{'@'}exemple.com",
+    whatsAppPhoneLabel: "Téléphone WhatsApp",
+    whatsAppPhonePlaceholder: "+221770000000",
     passwordLabel: "Mot de passe",
     passwordPlaceholder: "Au moins 8 caractères",
     mustChangePassword: "Exiger le changement de mot de passe à la première connexion",

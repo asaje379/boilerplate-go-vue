@@ -6,6 +6,7 @@ import type {
   UpdateProfilePayload,
   UpdateProfilePhotoPayload,
   UpdateSecurityPayload,
+  UpdateNotificationPrefsPayload,
   UpdateUserPayload,
   User,
   UsersListResponse,
@@ -79,6 +80,13 @@ export const usersApi = {
 
   updateSecurity(payload: UpdateSecurityPayload) {
     return apiRequest<User>("/users/me/security", {
+      body: payload,
+      method: "PATCH",
+    });
+  },
+
+  updateNotificationPrefs(payload: UpdateNotificationPrefsPayload) {
+    return apiRequest<User>("/users/me/notifications", {
       body: payload,
       method: "PATCH",
     });

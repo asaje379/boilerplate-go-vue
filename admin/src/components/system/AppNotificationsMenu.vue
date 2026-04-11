@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Bell } from "lucide-vue-next";
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +22,16 @@ interface NotificationItem {
 }
 
 const props = defineProps<{
+  loading?: boolean;
   notifications: readonly NotificationItem[];
 }>();
+
+const emit = defineEmits<{
+  markAllRead: [];
+  select: [id: string];
+}>();
+
+const { t } = useI18n();
 
 const unreadCount = computed(
   () => props.notifications.filter((notification) => notification.unread).length,
@@ -45,15 +54,19 @@ const unreadCount = computed(
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" class="w-80">
       <DropdownMenuLabel class="flex items-center justify-between gap-2">
-        <span>Notifications</span>
-        <span class="text-muted-foreground text-xs font-normal">{{ unreadCount }} unread</span>
+        <span>{{ t("notifications.title") }}</span>
+        <span class="text-muted-foreground text-xs font-normal">{{ t("notifications.unread", { count: unreadCount }) }}</span>
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
+      <div class="flex items-center justify-end px-2 pb-2" v-if="unreadCount > 0">
+        <Button variant="ghost" size="sm" @click="emit('markAllRead')">{{ t("notifications.markAllRead") }}</Button>
+      </div>
       <template v-if="notifications.length">
         <DropdownMenuItem
           v-for="notification in notifications"
           :key="notification.id"
           class="items-start gap-3 py-3"
+          @click="emit('select', notification.id)"
         >
           <div
             class="bg-primary mt-1 size-2 shrink-0 rounded-full"
@@ -68,7 +81,7 @@ const unreadCount = computed(
           </div>
         </DropdownMenuItem>
       </template>
-      <div v-else class="text-muted-foreground px-2 py-6 text-center text-sm">No notifications</div>
+      <div v-else class="text-muted-foreground px-2 py-6 text-center text-sm">{{ loading ? t("notifications.loading") : t("notifications.empty") }}</div>
     </DropdownMenuContent>
   </DropdownMenu>
 </template>

@@ -8,12 +8,14 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	appauth "api/internal/application/auth"
 	appcommon "api/internal/application/common"
 	appfile "api/internal/application/file"
+	appnotification "api/internal/application/notification"
 	appuser "api/internal/application/user"
 	userdomain "api/internal/domain/user"
 	"api/internal/infrastructure/persistence/postgres"
@@ -21,12 +23,18 @@ import (
 	"api/internal/interfaces/http/router"
 	platformasync "api/internal/platform/async"
 	"api/internal/platform/config"
+	platformcron "api/internal/platform/cron"
 	platformemail "api/internal/platform/email"
+	platformmailer "api/internal/platform/mailer"
+	brevomailer "api/internal/platform/mailer/brevo"
 	mailchimpmailer "api/internal/platform/mailer/mailchimp"
+	smtpmailer "api/internal/platform/mailer/smtp"
 	"api/internal/platform/migrations"
+	platformnotification "api/internal/platform/notification"
 	platformrabbitmq "api/internal/platform/rabbitmq"
 	platformrealtime "api/internal/platform/realtime"
 	"api/internal/platform/seeder"
+	platformwhatsapp "api/internal/platform/whatsapp"
 	"api/internal/platform/worker"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +47,7 @@ type Application struct {
 	users  postgres.UserRepository
 	auth   appauth.Service
 	files  appfile.Service
+	notifs appnotification.Service
 }
 
 func NewApplication(cfg config.Config) (*Application, error) {
@@ -56,9 +65,10 @@ func NewApplication(cfg config.Config) (*Application, error) {
 		users:  deps.users,
 		auth:   deps.auth,
 		files:  deps.file,
+		notifs: deps.notification,
 	}
 
-	app.engine = router.New(cfg, deps.db, deps.auth, deps.user, deps.file)
+	app.engine = router.New(cfg, deps.db, deps.auth, deps.user, deps.file, deps.notification)
 	return app, nil
 }
 
@@ -94,13 +104,14 @@ func RunSeeds(cfg config.Config) error {
 }
 
 type dependencies struct {
-	db     *gorm.DB
-	users  postgres.UserRepository
-	auth   appauth.Service
-	user   appuser.Service
-	file   appfile.Service
-	config config.Config
-	mailer *mailchimpmailer.Mailer
+	db           *gorm.DB
+	users        postgres.UserRepository
+	auth         appauth.Service
+	user         appuser.Service
+	file         appfile.Service
+	notification appnotification.Service
+	config       config.Config
+	mailer       platformmailer.Mailer
 }
 
 func newDependencies(cfg config.Config) (*dependencies, error) {
@@ -126,13 +137,14 @@ func newDependencies(cfg config.Config) (*dependencies, error) {
 
 	userRepository := postgres.NewUserRepository(db)
 	fileRepository := postgres.NewFileRepository(db)
+	notificationRepository := postgres.NewNotificationRepository(db)
 	refreshTokenRepository := postgres.NewRefreshTokenRepository(db)
 	emailOTPRepository := postgres.NewEmailOTPRepository(db)
 	storage, err := storages3.New(cfg)
 	if err != nil {
 		return nil, err
 	}
-	mailer := mailchimpmailer.New(cfg)
+	mailer := newMailer(cfg)
 	var emailDispatcher platformasync.EmailDispatcher = platformasync.NewDirectEmailDispatcher(mailer)
 	var eventPublisher appcommon.EventPublisher = appcommon.NoopEventPublisher{}
 
@@ -148,7 +160,6 @@ func newDependencies(cfg config.Config) (*dependencies, error) {
 		emailDispatcher = platformasync.NewRabbitMQEmailDispatcher(tasksPublisher, cfg.RabbitMQTasksExchange)
 		eventPublisher = platformrealtime.NewPublisher(realtimePublisher, cfg.RabbitMQRealtimeExchange)
 	}
-
 	authService := appauth.NewService(appauth.ServiceConfig{
 		Users:               userRepository,
 		RefreshTokens:       refreshTokenRepository,
@@ -163,16 +174,18 @@ func newDependencies(cfg config.Config) (*dependencies, error) {
 		DefaultLocale:       userdomain.Locale(cfg.DefaultLocale),
 	})
 	userService := appuser.NewService(userRepository, fileRepository, eventPublisher, emailValidator)
-	fileService := appfile.NewService(fileRepository, storage, cfg.BucketBasePath, cfg.FileSignedURLTTL, cfg.FileMaxSizeBytes, eventPublisher)
+	fileService := appfile.NewService(fileRepository, storage, cfg.BucketBasePath, cfg.PublicAPIBaseURL, cfg.FileSignedURLTTL, cfg.FileMaxSizeBytes, eventPublisher)
+	notificationService := appnotification.NewService(notificationRepository)
 
 	return &dependencies{
-		db:     db,
-		users:  userRepository,
-		auth:   authService,
-		user:   userService,
-		file:   fileService,
-		config: cfg,
-		mailer: mailer,
+		db:           db,
+		users:        userRepository,
+		auth:         authService,
+		user:         userService,
+		file:         fileService,
+		notification: notificationService,
+		config:       cfg,
+		mailer:       mailer,
 	}, nil
 }
 
@@ -234,9 +247,111 @@ func RunWorker(cfg config.Config) error {
 		cfg.RabbitMQWorkerQueue,
 		cfg.RabbitMQWorkerConsumerTag,
 	)
-	mailer := mailchimpmailer.New(cfg)
+	mailer := newMailer(cfg)
 	emailWorker := worker.NewEmailWorker(cfg.RabbitMQURL, cfg.RabbitMQTasksExchange, cfg.RabbitMQWorkerQueue, cfg.RabbitMQWorkerConsumerTag, 10, mailer)
-	return emailWorker.Run(context.Background())
+
+	db, err := postgres.New(cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("worker db: %w", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("worker sql db: %w", err)
+	}
+	if err := migrations.NewRunner().Run(context.Background(), sqlDB); err != nil {
+		return fmt.Errorf("worker migrations: %w", err)
+	}
+
+	notifConfig, err := platformnotification.LoadConfig("notifications.yaml")
+	if err != nil {
+		return fmt.Errorf("load notification config: %w", err)
+	}
+	notificationRepo := postgres.NewNotificationRepository(db)
+	userRepo := postgres.NewUserRepository(db)
+	var eventPublisher appcommon.EventPublisher = appcommon.NoopEventPublisher{}
+	var whatsappClient *platformwhatsapp.Client
+	if cfg.RabbitMQURL != "" {
+		realtimePublisher, err := platformrabbitmq.NewPublisher(cfg.RabbitMQURL, platformrabbitmq.Exchange{Name: cfg.RabbitMQRealtimeExchange, Kind: "topic"})
+		if err != nil {
+			return fmt.Errorf("worker realtime publisher: %w", err)
+		}
+		eventPublisher = platformrealtime.NewPublisher(realtimePublisher, cfg.RabbitMQRealtimeExchange)
+	}
+	if cfg.WasenderAPIKey != "" {
+		whatsappClient = platformwhatsapp.NewClient(cfg.WasenderAPIKey)
+	}
+	dispatcher := platformnotification.NewDispatcher(notifConfig, notificationRepo, userRepo, mailer, whatsappClient, eventPublisher, userdomain.Locale(cfg.DefaultLocale))
+	notificationWorker := worker.NewNotificationWorker(cfg.RabbitMQURL, cfg.RabbitMQRealtimeExchange, workerEnvOrDefault("RABBITMQ_NOTIFICATION_QUEUE", "api.worker.notifications"), workerEnvOrDefault("RABBITMQ_NOTIFICATION_CONSUMER_TAG", "api-notification-worker"), 10, dispatcher)
+
+	cronConfig, err := platformcron.LoadConfig("crons.yaml")
+	if err != nil {
+		return fmt.Errorf("load cron config: %w", err)
+	}
+	startCronJobs(db, cronConfig)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 2)
+	go func() { errCh <- emailWorker.Run(ctx) }()
+	go func() { errCh <- notificationWorker.Run(ctx) }()
+	return <-errCh
+}
+
+func workerEnvOrDefault(key, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func startCronJobs(db *gorm.DB, cfg *platformcron.Config) {
+	if cfg == nil {
+		return
+	}
+
+	jobs := map[string]func(context.Context){
+		"prune_expired_email_otps": func(ctx context.Context) {
+			cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour)
+			if err := db.WithContext(ctx).Exec("DELETE FROM email_otps WHERE expires_at < NOW() OR (consumed_at IS NOT NULL AND consumed_at < ?)", cutoff).Error; err != nil {
+				log.Printf("cron prune_expired_email_otps failed: %v", err)
+			}
+		},
+		"prune_expired_refresh_tokens": func(ctx context.Context) {
+			cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour)
+			if err := db.WithContext(ctx).Exec("DELETE FROM refresh_tokens WHERE expires_at < NOW() OR (revoked_at IS NOT NULL AND revoked_at < ?)", cutoff).Error; err != nil {
+				log.Printf("cron prune_expired_refresh_tokens failed: %v", err)
+			}
+		},
+	}
+
+	for name, fn := range jobs {
+		if !cfg.IsEnabled(name) {
+			continue
+		}
+		interval := cfg.GetInterval(name)
+		if interval <= 0 {
+			continue
+		}
+		go func(jobName string, jobFn func(context.Context), delay time.Duration) {
+			ticker := time.NewTicker(delay)
+			defer ticker.Stop()
+			for range ticker.C {
+				jobFn(context.Background())
+				log.Printf("cron %s completed", jobName)
+			}
+		}(name, fn, interval)
+	}
+}
+
+func newMailer(cfg config.Config) platformmailer.Mailer {
+	switch cfg.MailProvider {
+	case "brevo":
+		return brevomailer.New(cfg)
+	case "smtp":
+		return smtpmailer.New(cfg)
+	default:
+		return mailchimpmailer.New(cfg)
+	}
 }
 
 func describeAMQPURL(raw string) string {

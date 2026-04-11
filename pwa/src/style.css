@@ -1,0 +1,186 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #111827;
+  background: #eef2ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  gap: 20px;
+  place-items: center;
+  padding: 24px;
+}
+
+.panel {
+  width: min(720px, 100%);
+  padding: 28px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 20px 60px rgba(37, 99, 235, 0.12);
+}
+
+.hero {
+  background: linear-gradient(160deg, #111827, #2563eb);
+  color: #fff;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 7vw, 3.6rem);
+}
+
+p, li {
+  line-height: 1.6;
+}
+
+.button,
+.back {
+  display: inline-flex;
+  margin-top: 16px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111827;
+  text-decoration: none;
+}
+
+.button {
+  border: 0;
+  cursor: pointer;
+}
+
+.button.secondary {
+  background: #dbeafe;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.field textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  padding: 12px;
+  font: inherit;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  padding: 12px;
+  font: inherit;
+}
+
+.select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  padding: 12px;
+  font: inherit;
+  background: #fff;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notification-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.notification-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  padding: 16px;
+  background: #eff6ff;
+  cursor: pointer;
+}
+
+.notification-card.read {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.notification-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.prefs {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.checkbox-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.error-text {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.phone-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.phone-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.dial-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #fff;
+  white-space: nowrap;
+}

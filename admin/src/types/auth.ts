@@ -10,6 +10,7 @@ export interface BootstrapFirstAdminPayload {
   name: string;
   password: string;
   preferredLocale: "fr" | "en";
+  whatsAppPhone?: string;
 }
 
 export interface LoginChallenge {

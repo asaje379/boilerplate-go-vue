@@ -52,8 +52,21 @@ const DEFAULT_RAILWAY_APP_SERVICE_SPECS = [
     directory: "realtime-gateway",
     key: "realtime",
   },
+  {
+    aliases: ["landing", "marketing"],
+    baseName: "landing",
+    directory: "landing",
+    key: "landing",
+  },
+  {
+    aliases: ["pwa", "mobile-web"],
+    baseName: "pwa",
+    directory: "pwa",
+    key: "pwa",
+  },
 ];
 const SAFE_UPDATE_PATHS = [
+  ".github/workflows/deploy-railway.yml",
   "docker-compose.yml",
   "admin/.env.example",
   "admin/Dockerfile",
@@ -66,11 +79,20 @@ const SAFE_UPDATE_PATHS = [
   "realtime-gateway/.env.example",
   "realtime-gateway/Dockerfile",
   "realtime-gateway/railway.json",
+  "landing/.env.example",
+  "landing/Dockerfile",
+  "landing/nginx.conf",
+  "pwa/.env.example",
+  "pwa/Dockerfile",
+  "pwa/nginx.conf",
+  "pwa/public",
 ];
 const ENV_FILE_SPECS = [
   { envPath: "admin/.env", examplePath: "admin/.env.example" },
   { envPath: "api/.env", examplePath: "api/.env.example" },
   { envPath: "realtime-gateway/.env", examplePath: "realtime-gateway/.env.example" },
+  { envPath: "landing/.env", examplePath: "landing/.env.example" },
+  { envPath: "pwa/.env", examplePath: "pwa/.env.example" },
 ];
 
 await main();
@@ -113,6 +135,18 @@ async function main() {
     if (invocation.command === "sync-project-config") {
       await runSyncProjectConfig(invocation.argv);
       outro(pc.green("Project config sync complete."));
+      return;
+    }
+
+    if (invocation.command === "sync-readme") {
+      await runSyncReadme(invocation.argv);
+      outro(pc.green("Project README sync complete."));
+      return;
+    }
+
+    if (invocation.command === "sync-github-workflow") {
+      await runSyncGithubWorkflow(invocation.argv);
+      outro(pc.green("GitHub workflow sync complete."));
       return;
     }
 
@@ -218,6 +252,14 @@ function resolveInvocation(argv) {
       return { argv: rawArgs.slice(1), command: "sync-project-config", title: "asaje sync-project-config" };
     }
 
+    if (firstArg === "sync-readme") {
+      return { argv: rawArgs.slice(1), command: "sync-readme", title: "asaje sync-readme" };
+    }
+
+    if (firstArg === "sync-github-workflow") {
+      return { argv: rawArgs.slice(1), command: "sync-github-workflow", title: "asaje sync-github-workflow" };
+    }
+
     if (firstArg === "setup-railway") {
       return { argv: rawArgs.slice(1), command: "setup-railway", title: "asaje setup-railway" };
     }
@@ -281,6 +323,14 @@ function resolveInvocation(argv) {
     return { argv: rawArgs.slice(1), command: "sync-project-config", title: "create-asaje-go-vue" };
   }
 
+  if (firstArg === "sync-readme") {
+    return { argv: rawArgs.slice(1), command: "sync-readme", title: "create-asaje-go-vue" };
+  }
+
+  if (firstArg === "sync-github-workflow") {
+    return { argv: rawArgs.slice(1), command: "sync-github-workflow", title: "create-asaje-go-vue" };
+  }
+
   if (firstArg === "setup-railway") {
     return { argv: rawArgs.slice(1), command: "setup-railway", title: "create-asaje-go-vue" };
   }
@@ -329,6 +379,8 @@ function printHelp() {
   console.log(`- ${pc.bold("asaje publish")} run npm publish checklist for the CLI package`);
   console.log(`- ${pc.bold("asaje update [directory]")} update managed boilerplate files from the template`);
   console.log(`- ${pc.bold("asaje sync-project-config [directory]")} scan the project and rewrite Asaje config manifests`);
+  console.log(`- ${pc.bold("asaje sync-readme [directory]")} regenerate the project README from config`);
+  console.log(`- ${pc.bold("asaje sync-github-workflow [directory]")} regenerate the GitHub Actions Railway deploy workflow from config`);
   console.log(`- ${pc.bold("asaje setup-railway [directory]")} provision Railway infrastructure for a project`);
   console.log(`- ${pc.bold("asaje update-railway [directory]")} reconcile Railway resources/services/vars from current config`);
   console.log(`- ${pc.bold("asaje sync-railway-env [directory]")} sync Railway app variables without provisioning`);
@@ -346,6 +398,8 @@ function printHelp() {
   console.log(`- ${pc.bold("asaje publish")}`);
   console.log(`- ${pc.bold("asaje update .. --dry-run")}`);
   console.log(`- ${pc.bold("asaje sync-project-config .. --dry-run")}`);
+  console.log(`- ${pc.bold("asaje sync-readme .. --dry-run")}`);
+  console.log(`- ${pc.bold("asaje sync-github-workflow .. --dry-run")}`);
   console.log(`- ${pc.bold("asaje setup-railway ..")}`);
   console.log(`- ${pc.bold("asaje update-railway ..")}`);
   console.log(`- ${pc.bold("asaje sync-railway-env ..")}`);
@@ -369,6 +423,8 @@ async function runCreate(argv) {
   await cleanupTemplateFiles(destinationDir);
   await writeProjectConfig(destinationDir, answers);
   await writeEnvFiles(destinationDir, answers);
+  await writeProjectReadme(destinationDir, answers);
+  await writeGithubWorkflow(destinationDir, answers);
 
   if (answers.installDependencies) {
     console.log(pc.dim("\nInstalling frontend and Go dependencies..."));
@@ -529,11 +585,13 @@ async function collectCreateAnswers(args) {
       corsAllowedOrigins: "",
       defaultLocale: "fr",
       directory: defaultDirectory,
+      includeLanding: true,
+      includePwa: true,
       installDependencies: args.installDependencies ?? true,
       mailFromEmail: `no-reply@${defaultSlug || "asaje-app"}.local`,
       mailFromName: defaultAppName,
+      mailProvider: "mailchimp",
       mailchimpApiKey: "dev-placeholder-key",
-      mailProvider: "mailchimp-placeholder",
       realtimePort: 8090,
       seedAdmin: false,
       seedUser: false,
@@ -757,11 +815,12 @@ async function collectCreateAnswers(args) {
 
   const mailProvider = await prompt(
     select({
-      initialValue: "mailchimp-placeholder",
+      initialValue: "mailchimp",
       message: "Transactional email mode?",
       options: [
-        { label: "Mailchimp placeholder key", value: "mailchimp-placeholder" },
-        { label: "Configured Mailchimp Transactional", value: "mailchimp" },
+        { label: "Mailchimp Transactional", value: "mailchimp" },
+        { label: "Brevo", value: "brevo" },
+        { label: "SMTP", value: "smtp" },
       ],
     }),
   );
@@ -779,10 +838,74 @@ async function collectCreateAnswers(args) {
       },
     }),
   );
-  const mailchimpApiKey =
-    mailProvider === "mailchimp"
-      ? await promptSecret("Mailchimp Transactional API key?", 3)
-      : "dev-placeholder-key";
+  const mailchimpApiKey = mailProvider === "mailchimp" ? await promptSecret("Mailchimp Transactional API key?", 3) : "";
+  const brevoApiKey = mailProvider === "brevo" ? await promptSecret("Brevo API key?", 3) : "";
+  const smtpHost =
+    mailProvider === "smtp"
+      ? await prompt(
+          text({
+            defaultValue: "smtp.gmail.com",
+            message: "SMTP host?",
+            validate(value) {
+              return value.trim().length === 0 ? "SMTP host is required" : undefined;
+            },
+          }),
+        )
+      : "";
+  const smtpPort = mailProvider === "smtp" ? await promptNumber("SMTP port?", 587) : 587;
+  const smtpUsername = mailProvider === "smtp" ? await prompt(text({ defaultValue: "", message: "SMTP username?" })) : "";
+  const smtpPassword = mailProvider === "smtp" ? await promptSecret("SMTP password?", 0, "") : "";
+  const smtpUseSSL =
+    mailProvider === "smtp"
+      ? await prompt(
+          confirm({
+            initialValue: false,
+            message: "Use SSL for SMTP?",
+          }),
+        )
+      : false;
+
+  const includeLanding = await prompt(
+    confirm({
+      initialValue: true,
+      message: "Enable the optional landing surface?",
+    }),
+  );
+  const includePwa = await prompt(
+    confirm({
+      initialValue: true,
+      message: "Enable the optional PWA surface?",
+    }),
+  );
+
+  const enableGithubWorkflow = await prompt(
+    confirm({
+      initialValue: true,
+      message: "Generate a GitHub Actions Railway deploy workflow?",
+    }),
+  );
+  const productionBranch = enableGithubWorkflow
+    ? await prompt(
+        text({
+          defaultValue: "main",
+          message: "Production branch?",
+          validate(value) {
+            return value.trim().length === 0 ? "Production branch is required" : undefined;
+          },
+        }),
+      )
+    : "main";
+  const stagingBranch = enableGithubWorkflow
+    ? await prompt(
+        text({
+          defaultValue: "develop",
+          message: "Staging branch?",
+          validate(value) {
+            return value.trim().length === 0 ? "Staging branch is required" : undefined;
+          },
+        }),
+      )
+    : "develop";
 
   const corsAllowedOrigins = await prompt(
     text({
@@ -823,7 +946,11 @@ async function collectCreateAnswers(args) {
     corsAllowedOrigins,
     defaultLocale,
     directory,
+    enableGithubWorkflow,
+    includeLanding,
+    includePwa,
     installDependencies,
+    brevoApiKey,
     mailFromEmail,
     mailFromName,
     mailProvider,
@@ -844,7 +971,14 @@ async function collectCreateAnswers(args) {
     startInfra,
     storageProvider,
     swaggerUsername,
+    smtpHost,
+    smtpPassword,
+    smtpPort,
+    smtpUseSSL,
+    smtpUsername,
+    stagingBranch,
     template: args.template,
+    productionBranch,
   });
 }
 
@@ -917,11 +1051,23 @@ function buildCreateAnswers(input) {
       secretAccessKey: input.awsSecretAccessKey || "",
     },
     branch: input.branch,
+    brevoApiKey: input.brevoApiKey || "",
     bucketBasePath: (input.bucketBasePath || slug).trim(),
     corsAllowedOrigins,
     databaseName,
     defaultLocale: input.defaultLocale,
     directory,
+    github: {
+      enabled: Boolean(input.enableGithubWorkflow),
+      branchEnvironments: Boolean(input.enableGithubWorkflow)
+        ? [
+            { branch: (input.productionBranch || "main").trim(), environment: "production" },
+            { branch: (input.stagingBranch || "develop").trim(), environment: "staging" },
+          ].filter((entry, index, items) => entry.branch && items.findIndex((candidate) => candidate.branch === entry.branch) === index)
+        : [],
+    },
+    includeLanding: Boolean(input.includeLanding),
+    includePwa: Boolean(input.includePwa),
     installDependencies: input.installDependencies,
     jwtSecret,
     mailFromEmail: input.mailFromEmail.trim(),
@@ -942,6 +1088,13 @@ function buildCreateAnswers(input) {
     seedAdmin: input.seedAdmin,
     seedUser: input.seedUser,
     slug,
+    smtp: {
+      host: (input.smtpHost || "").trim(),
+      password: input.smtpPassword || "",
+      port: input.smtpPort || 587,
+      useSSL: Boolean(input.smtpUseSSL),
+      username: (input.smtpUsername || "").trim(),
+    },
     standardUser: input.seedUser
       ? {
           email: input.seedUserEmail.trim(),
@@ -957,6 +1110,25 @@ function buildCreateAnswers(input) {
   };
 }
 
+function buildCreateRailwayServices(answers) {
+  return DEFAULT_RAILWAY_APP_SERVICE_SPECS.filter((spec) => {
+    if (spec.key === "landing") {
+      return answers.includeLanding;
+    }
+    if (spec.key === "pwa") {
+      return answers.includePwa;
+    }
+    return true;
+  }).map((spec) => ({
+    aliases: [...spec.aliases],
+    baseName: spec.baseName,
+    directory: spec.directory,
+    dockerfile: spec.key === "worker" ? "api/Dockerfile" : `${spec.directory}/Dockerfile`,
+    key: spec.key,
+    seedImage: spec.key === "admin" || spec.key === "landing" || spec.key === "pwa" ? "nginx:1.29-alpine" : "alpine:3.22",
+  }));
+}
+
 async function writeProjectConfig(destinationDir, answers) {
   const config = {
     projectName: answers.appName,
@@ -968,6 +1140,8 @@ async function writeProjectConfig(destinationDir, answers) {
     ports: {
       admin: answers.adminPort,
       api: answers.apiPort,
+      landing: 8088,
+      pwa: 4174,
       realtime: answers.realtimePort,
     },
     locale: answers.defaultLocale,
@@ -975,9 +1149,34 @@ async function writeProjectConfig(destinationDir, answers) {
       storageProvider: answers.storageProvider,
       mailProvider: answers.mailProvider,
     },
+    railway: {
+      environments: buildCreateRailwayEnvironments(answers),
+      services: buildCreateRailwayServices(answers),
+    },
+    ci: {
+      githubActions: {
+        deployRailway: {
+          branchEnvironments: answers.github.branchEnvironments,
+          enabled: answers.github.enabled,
+        },
+      },
+    },
   };
 
   await fs.writeJson(path.join(destinationDir, "asaje.config.json"), config, { spaces: 2 });
+}
+
+function buildCreateRailwayEnvironments(answers) {
+  const environments = {};
+  for (const mapping of answers.github.branchEnvironments || []) {
+    if (!mapping.environment) {
+      continue;
+    }
+    environments[mapping.environment] = {
+      railwayEnvironment: mapping.environment,
+    };
+  }
+  return environments;
 }
 
 async function writeEnvFiles(destinationDir, answers) {
@@ -1013,6 +1212,7 @@ async function writeEnvFiles(destinationDir, answers) {
     SWAGGER_USERNAME: answers.swaggerUsername,
     SWAGGER_PASSWORD: answers.swaggerPassword,
     CORS_ALLOWED_ORIGINS: answers.corsAllowedOrigins.join(","),
+    PUBLIC_API_BASE_URL: `http://localhost:${answers.apiPort}`,
     RATE_LIMIT_RPM: "120",
     RATE_LIMIT_BURST: "60",
     REGISTER_ALLOWED_EMAILS: "",
@@ -1031,9 +1231,16 @@ async function writeEnvFiles(destinationDir, answers) {
     MINIO_SECRET_KEY: answers.storageProvider === "minio" ? answers.minio.secretKey : "",
     MINIO_BUCKET_NAME: answers.storageProvider === "minio" ? answers.minio.bucket : "",
     MINIO_PUBLIC_URL: answers.storageProvider === "minio" ? answers.minio.publicUrl : "",
+    MAIL_PROVIDER: answers.mailProvider,
     MAILCHIMP_TRANSACTIONAL_API_KEY: answers.mailchimpApiKey,
+    BREVO_API_KEY: answers.brevoApiKey,
     MAIL_FROM_EMAIL: answers.mailFromEmail,
     MAIL_FROM_NAME: answers.mailFromName,
+    SMTP_HOST: answers.smtp.host,
+    SMTP_PORT: String(answers.smtp.port),
+    SMTP_USERNAME: answers.smtp.username,
+    SMTP_PASSWORD: answers.smtp.password,
+    SMTP_USE_SSL: String(answers.smtp.useSSL),
     RABBITMQ_URL: "amqp://guest:guest@localhost:5672/",
     RABBITMQ_TASKS_EXCHANGE: "boilerplate.tasks",
     RABBITMQ_REALTIME_EXCHANGE: "boilerplate.realtime",
@@ -1057,6 +1264,301 @@ async function writeEnvFiles(destinationDir, answers) {
       REALTIME_WRITE_TIMEOUT_SECONDS: "10",
     }),
   );
+
+  await fs.writeFile(
+    path.join(destinationDir, "landing/.env"),
+    toEnvContent({
+      API_BASE_URL: `http://localhost:${answers.apiPort}`,
+      PWA_BASE_URL: "http://localhost:4174",
+    }),
+  );
+
+  await fs.writeFile(
+    path.join(destinationDir, "pwa/.env"),
+    toEnvContent({
+      VITE_APP_NAME: `${answers.appName} PWA`,
+      VITE_API_BASE_URL: `http://localhost:${answers.apiPort}/api/v1`,
+      VITE_REALTIME_BASE_URL: `http://localhost:${answers.realtimePort}`,
+    }),
+  );
+}
+
+async function writeGithubWorkflow(destinationDir, answers) {
+  if (!answers.github?.enabled || !answers.github.branchEnvironments?.length) {
+    return;
+  }
+
+  const workflowPath = path.join(destinationDir, ".github/workflows/deploy-railway.yml");
+  await fs.ensureDir(path.dirname(workflowPath));
+  await fs.writeFile(workflowPath, buildGithubWorkflowContent(answers));
+}
+
+async function writeProjectReadme(destinationDir, answers) {
+  await fs.writeFile(path.join(destinationDir, "README.md"), buildProjectReadmeContent(answers));
+}
+
+function buildProjectReadmeContent(answers) {
+  const surfaces = [
+    "- `admin/`: Vue 3 admin SPA for back-office and internal tooling",
+    "- `api/`: Go HTTP API with clean architecture and PostgreSQL",
+    "- `realtime-gateway/`: Go realtime transport service for SSE/WebSocket",
+    answers.includeLanding ? "- `landing/`: optional public marketing surface" : null,
+    answers.includePwa ? "- `pwa/`: optional installable end-user PWA surface" : null,
+  ].filter(Boolean).join("\n");
+
+  const ciMappings = (answers.github?.branchEnvironments || [])
+    .map((entry) => `- \`${entry.branch}\` -> \`${entry.environment}\``)
+    .join("\n");
+
+  return `# ${answers.appName}
+
+Generated with \`create-asaje-go-vue\` / \`asaje\`.
+
+## Stack
+
+- Frontend admin: Vue 3, Vite, Pinia, Vue Router, vue-i18n, shadcn-vue
+- API: Go, Gin, GORM, PostgreSQL, JWT
+- Async and realtime: RabbitMQ + realtime gateway (SSE/WebSocket)
+- File storage: ${answers.storageProvider === "aws" ? "AWS S3" : "MinIO / S3-compatible"}
+- Optional mail providers: Mailchimp Transactional, Brevo, SMTP
+- Deployment tooling: Railway + GitHub Actions via \`asaje\`
+
+## Project Surfaces
+
+${surfaces}
+
+## How Things Are Linked
+
+- The admin and PWA call the API through domain API modules, not raw fetches.
+- The API owns business logic and persistence.
+- The API publishes async tasks and realtime events to RabbitMQ.
+- The realtime gateway consumes realtime events and pushes them to browsers.
+- File uploads go through the API and object storage, with stable media URLs exposed by the API.
+
+## Local Development
+
+Install and start the project:
+
+\`\`\`bash
+docker compose up -d
+npx -p create-asaje-go-vue asaje start .
+\`\`\`
+
+Useful local URLs:
+
+- Admin: http://localhost:${answers.adminPort}
+${answers.includeLanding ? `- Landing: http://localhost:8088
+` : ""}${answers.includePwa ? `- PWA: http://localhost:4174
+` : ""}- API: http://localhost:${answers.apiPort}/api/v1
+- Swagger: http://localhost:${answers.apiPort}/swagger/index.html
+- Realtime gateway: http://localhost:${answers.realtimePort}
+
+## Asaje Commands
+
+- \`asaje start .\`: run local services
+- \`asaje doctor .\`: check tooling and project readiness
+- \`asaje update .\`: update managed boilerplate files from the template
+- \`asaje sync-project-config .\`: rescan the project and rewrite config manifests
+- \`asaje setup-railway .\`: provision Railway resources and first deploy
+- \`asaje update-railway .\`: reconcile Railway resources, services, and variables
+- \`asaje sync-railway-env .\`: sync only Railway environment variables
+- \`asaje deploy-railway .\`: deploy the current source tree to Railway
+- \`asaje sync-github-workflow .\`: regenerate the GitHub Actions Railway workflow from config
+
+## Railway And GitHub Actions
+
+- Railway variable mode defaults to \`preserve-remote\`, so existing Railway values are kept unless you explicitly override them in \`asaje.config.json\`.
+${answers.github?.enabled ? `- GitHub Actions deploy workflow is generated in \`.github/workflows/deploy-railway.yml\`.
+- Branch to environment mapping:
+${ciMappings}
+- Add \`RAILWAY_TOKEN\` to your GitHub repository secrets before enabling automatic deploys.
+` : "- No GitHub Actions Railway workflow was generated during bootstrap. You can enable it later in \`asaje.config.json\` and run \`asaje sync-github-workflow .\`.\n"}
+## Important Files
+
+- \`asaje.config.json\`: project config, Railway config, CI/CD metadata
+- \`asaje.railway.json\`: local manifest of discovered Railway services/resources
+- \`api/notifications.yaml\`: generic notification event/channel templates
+- \`api/crons.yaml\`: worker cron configuration
+
+## Notes
+
+- This project is designed to stay modular: keep generic infrastructure in the boilerplate, and move product-specific business logic into your app domain.
+- When you add new app surfaces or Dockerfiles, rerun \`asaje sync-project-config .\`.
+`;
+}
+
+function buildReadmeAnswersFromProjectConfig(projectDir, projectConfig) {
+  const ports = projectConfig?.ports || {};
+  const appServiceSpecs = resolveRailwayAppServiceSpecs(projectConfig);
+  const githubConfig = getGithubActionsDeployConfig(projectConfig);
+
+  return {
+    adminPort: Number(ports.admin || 5173),
+    apiPort: Number(ports.api || 8080),
+    appName: String(projectConfig?.projectName || path.basename(projectDir)),
+    github: githubConfig,
+    includeLanding: appServiceSpecs.some((spec) => spec.key === "landing"),
+    includePwa: appServiceSpecs.some((spec) => spec.key === "pwa"),
+    realtimePort: Number(ports.realtime || 8090),
+    storageProvider: String(projectConfig?.services?.storageProvider || "minio"),
+  };
+}
+
+async function writeGithubWorkflowFromProjectConfig(projectDir, projectConfig) {
+  const workflowConfig = getGithubActionsDeployConfig(projectConfig);
+  if (!workflowConfig.enabled || workflowConfig.branchEnvironments.length === 0) {
+    return;
+  }
+
+  const answers = {
+    github: workflowConfig,
+    includeLanding: resolveRailwayAppServiceSpecs(projectConfig).some((spec) => spec.key === "landing"),
+    includePwa: resolveRailwayAppServiceSpecs(projectConfig).some((spec) => spec.key === "pwa"),
+  };
+  const workflowPath = path.join(projectDir, ".github/workflows/deploy-railway.yml");
+  await fs.ensureDir(path.dirname(workflowPath));
+  await fs.writeFile(workflowPath, buildGithubWorkflowContent(answers));
+}
+
+function getGithubActionsDeployConfig(projectConfig) {
+  const deployRailway = projectConfig?.ci?.githubActions?.deployRailway;
+  const rawMappings = Array.isArray(deployRailway?.branchEnvironments) ? deployRailway.branchEnvironments : [];
+  const branchEnvironments = rawMappings
+    .map((entry) => ({
+      branch: String(entry?.branch || "").trim(),
+      environment: String(entry?.environment || "").trim(),
+    }))
+    .filter((entry, index, items) => entry.branch && entry.environment && items.findIndex((candidate) => candidate.branch === entry.branch) === index);
+
+  return {
+    branchEnvironments,
+    enabled: Boolean(deployRailway?.enabled) && branchEnvironments.length > 0,
+  };
+}
+
+function buildGithubWorkflowContent(answers) {
+  const branchEnvironments = answers.github.branchEnvironments;
+  const branchList = branchEnvironments.map((entry) => `      - ${entry.branch}`).join("\n");
+
+  const branchCase = branchEnvironments
+    .map((entry) => `            ${entry.branch}) echo "environment=${entry.environment}" >> "$GITHUB_OUTPUT" ;;
+`)
+    .join("");
+
+  const managedServices = buildCreateRailwayServices(answers).map((spec) => spec.key);
+  const hasLanding = managedServices.includes("landing");
+  const hasPwa = managedServices.includes("pwa");
+
+  return `name: Deploy Railway
+
+on:
+  push:
+    branches:
+${branchList}
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      admin: \${{ steps.filter.outputs.admin }}
+      api: \${{ steps.filter.outputs.api }}
+      config: \${{ steps.filter.outputs.config }}
+      landing: \${{ steps.filter.outputs.landing }}
+      pwa: \${{ steps.filter.outputs.pwa }}
+      realtime: \${{ steps.filter.outputs.realtime }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'api/**'
+            realtime:
+              - 'realtime-gateway/**'
+            admin:
+              - 'admin/**'
+            landing:
+              - 'landing/**'
+            pwa:
+              - 'pwa/**'
+            config:
+              - 'asaje.config.json'
+              - 'asaje.railway.json'
+              - 'docker-compose.yml'
+
+  deploy:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Resolve target environment
+        id: target
+        shell: bash
+        run: |
+          branch="\${GITHUB_REF_NAME}"
+          case "$branch" in
+${branchCase}            *) echo "Unsupported branch: $branch" >&2; exit 1 ;;
+          esac
+
+      - name: Sync Railway environment
+        if: needs.detect-changes.outputs.config == 'true'
+        env:
+          RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+        run: npx -p create-asaje-go-vue@latest asaje sync-railway-env . --yes --environment \${{ steps.target.outputs.environment }}
+
+      - name: Deploy api
+        if: needs.detect-changes.outputs.api == 'true' || needs.detect-changes.outputs.config == 'true'
+        env:
+          RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+        run: npx -p create-asaje-go-vue@latest asaje deploy-railway . --service api --environment \${{ steps.target.outputs.environment }}
+
+      - name: Deploy worker
+        if: needs.detect-changes.outputs.api == 'true' || needs.detect-changes.outputs.config == 'true'
+        env:
+          RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+        run: npx -p create-asaje-go-vue@latest asaje deploy-railway . --service worker --environment \${{ steps.target.outputs.environment }}
+
+      - name: Deploy realtime
+        if: needs.detect-changes.outputs.realtime == 'true' || needs.detect-changes.outputs.config == 'true'
+        env:
+          RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+        run: npx -p create-asaje-go-vue@latest asaje deploy-railway . --service realtime --environment \${{ steps.target.outputs.environment }}
+
+      - name: Deploy admin
+        if: needs.detect-changes.outputs.admin == 'true' || needs.detect-changes.outputs.config == 'true'
+        env:
+          RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+        run: npx -p create-asaje-go-vue@latest asaje deploy-railway . --service admin --environment \${{ steps.target.outputs.environment }}
+${hasLanding ? `
+      - name: Deploy landing
+        if: needs.detect-changes.outputs.landing == 'true' || needs.detect-changes.outputs.config == 'true'
+        env:
+          RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+        run: npx -p create-asaje-go-vue@latest asaje deploy-railway . --service landing --environment \${{ steps.target.outputs.environment }}
+` : ""}${hasPwa ? `
+      - name: Deploy pwa
+        if: needs.detect-changes.outputs.pwa == 'true' || needs.detect-changes.outputs.config == 'true'
+        env:
+          RAILWAY_TOKEN: \${{ secrets.RAILWAY_TOKEN }}
+        run: npx -p create-asaje-go-vue@latest asaje deploy-railway . --service pwa --environment \${{ steps.target.outputs.environment }}
+` : ""}`;
 }
 
 function printCreateSummary(destinationDir, answers) {
@@ -1066,6 +1568,12 @@ function printCreateSummary(destinationDir, answers) {
   console.log(`- Template: ${pc.bold(`${answers.template}#${answers.branch}`)}`);
   console.log(`- Storage: ${pc.bold(answers.storageProvider)}`);
   console.log(`- Admin URL: ${pc.bold(`http://localhost:${answers.adminPort}`)}`);
+  if (answers.includeLanding) {
+    console.log(`- Landing URL: ${pc.bold("http://localhost:8088")}`);
+  }
+  if (answers.includePwa) {
+    console.log(`- PWA URL: ${pc.bold("http://localhost:4174")}`);
+  }
   console.log(`- API URL: ${pc.bold(`http://localhost:${answers.apiPort}/api/v1`)}`);
   console.log(`- Realtime URL: ${pc.bold(`http://localhost:${answers.realtimePort}`)}`);
   console.log(`- Swagger: ${pc.bold(`http://localhost:${answers.apiPort}/swagger/index.html`)}`);
@@ -1082,7 +1590,7 @@ function printCreateSummary(destinationDir, answers) {
   console.log(`  cd ${shellEscape(destinationDir)}`);
   console.log("  docker compose up -d");
   console.log(`  npx -p create-asaje-go-vue asaje start ${shellEscape(destinationDir)}`);
-  console.log(pc.dim("\nNote: OTP email delivery still requires a valid Mailchimp Transactional key for real email sends."));
+  console.log(pc.dim("\nNote: transactional email delivery depends on the configured provider credentials."));
 }
 
 async function runStart(argv) {
@@ -1145,6 +1653,10 @@ async function runDoctor(argv) {
     }
 
     for (const spec of ENV_FILE_SPECS) {
+      const serviceDir = spec.envPath.split("/")[0];
+      if (!(await fs.pathExists(path.join(projectDir, serviceDir)))) {
+        continue;
+      }
       const envExists = await fs.pathExists(path.join(projectDir, spec.envPath));
       const exampleExists = await fs.pathExists(path.join(projectDir, spec.examplePath));
       results.push({
@@ -1244,6 +1756,7 @@ async function runSyncProjectConfig(argv) {
   if (!args.dryRun) {
     await writeProjectConfigFile(projectDir, nextProjectConfig);
     await writeRailwayManifest(projectDir, nextManifest);
+    await writeGithubWorkflowFromProjectConfig(projectDir, nextProjectConfig);
   }
 
   printSyncProjectConfigSummary({
@@ -1255,6 +1768,61 @@ async function runSyncProjectConfig(argv) {
     projectDir,
     scanSummary,
   });
+}
+
+async function runSyncReadme(argv) {
+  const args = parseSyncReadmeArgs(argv);
+  const projectDir = path.resolve(process.cwd(), args.directory);
+
+  await ensureProjectStructure(projectDir);
+
+  const projectConfig = await loadProjectConfig(projectDir);
+  const answers = buildReadmeAnswersFromProjectConfig(projectDir, projectConfig);
+  const readmePath = path.join(projectDir, "README.md");
+
+  if (args.dryRun) {
+    console.log(pc.green("\nREADME preview."));
+    console.log(`- Directory: ${pc.bold(projectDir)}`);
+    console.log(`- README: ${pc.bold(readmePath)}`);
+    console.log(`- App: ${pc.bold(answers.appName)}`);
+    console.log("- Dry run only, README file was not changed");
+    return;
+  }
+
+  await writeProjectReadme(projectDir, answers);
+  console.log(pc.green("\nREADME generated."));
+  console.log(`- README: ${pc.bold(readmePath)}`);
+}
+
+async function runSyncGithubWorkflow(argv) {
+  const args = parseSyncGithubWorkflowArgs(argv);
+  const projectDir = path.resolve(process.cwd(), args.directory);
+
+  await ensureProjectStructure(projectDir);
+
+  const projectConfig = await loadProjectConfig(projectDir);
+  const workflowConfig = getGithubActionsDeployConfig(projectConfig);
+  const workflowPath = path.join(projectDir, ".github/workflows/deploy-railway.yml");
+
+  if (!workflowConfig.enabled) {
+    console.log(pc.yellow("- GitHub Actions Railway deploy workflow is not enabled in asaje.config.json"));
+    console.log(pc.dim("  Set ci.githubActions.deployRailway.enabled=true and define branchEnvironments first."));
+    return;
+  }
+
+  if (args.dryRun) {
+    console.log(pc.green("\nGitHub workflow preview."));
+    console.log(`- Directory: ${pc.bold(projectDir)}`);
+    console.log(`- Workflow: ${pc.bold(workflowPath)}`);
+    console.log(`- Branch mappings: ${pc.bold(workflowConfig.branchEnvironments.map((entry) => `${entry.branch} -> ${entry.environment}`).join(", "))}`);
+    console.log("- Dry run only, workflow file was not changed");
+    return;
+  }
+
+  await writeGithubWorkflowFromProjectConfig(projectDir, projectConfig);
+  console.log(pc.green("\nGitHub workflow generated."));
+  console.log(`- Workflow: ${pc.bold(workflowPath)}`);
+  console.log(`- Branch mappings: ${pc.bold(workflowConfig.branchEnvironments.map((entry) => `${entry.branch} -> ${entry.environment}`).join(", "))}`);
 }
 
 async function runSetupRailway(argv) {
@@ -2003,6 +2571,50 @@ function parseSyncProjectConfigArgs(argv) {
       options.yes = true;
       continue;
     }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  return options;
+}
+
+function parseSyncGithubWorkflowArgs(argv) {
+  const options = {
+    directory: ".",
+    dryRun: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
+
+  options.directory = positionals[0] || options.directory;
+  return options;
+}
+
+function parseSyncReadmeArgs(argv) {
+  const options = {
+    directory: ".",
+    dryRun: false,
+  };
+  const positionals = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
 
     if (arg === "--dry-run") {
       options.dryRun = true;
@@ -2999,12 +3611,15 @@ function findRailwayServiceByKey(services, appServiceSpecs, manifest, key) {
 }
 
 function resolveRailwayVariablesMode(projectConfig) {
-  const mode = String(getRailwayConfig(projectConfig).variablesMode || "merge").trim().toLowerCase();
+  const mode = String(getRailwayConfig(projectConfig).variablesMode || "preserve-remote").trim().toLowerCase();
   if (!mode) {
-    return "merge";
+    return "preserve-remote";
   }
-  if (!["merge", "replace"].includes(mode)) {
-    throw new Error("railway.variablesMode must be either `merge` or `replace`.");
+  if (mode === "merge") {
+    return "sync-managed";
+  }
+  if (!["preserve-remote", "sync-managed", "replace"].includes(mode)) {
+    throw new Error("railway.variablesMode must be one of: `preserve-remote`, `sync-managed`, `replace` (legacy `merge` maps to `sync-managed`).");
   }
   return mode;
 }
@@ -3106,10 +3721,47 @@ function mergeRailwayServiceVariables(registryEntry, variables) {
   };
 }
 
+function assignManagedRailwayServiceVariables(registryEntry, variables, variablesMode) {
+  if (!registryEntry || !registryEntry.name) {
+    return;
+  }
+
+  const nextVariables = {};
+  const existingVariables = registryEntry.existingVariables || {};
+
+  for (const [key, value] of Object.entries(variables || {})) {
+    if (typeof value !== "string" || value.length === 0) {
+      continue;
+    }
+
+    if (
+      variablesMode === "preserve-remote" &&
+      Object.prototype.hasOwnProperty.call(existingVariables, key)
+    ) {
+      nextVariables[key] = existingVariables[key];
+      continue;
+    }
+
+    nextVariables[key] = value;
+  }
+
+  mergeRailwayServiceVariables(registryEntry, nextVariables);
+}
+
+async function hydrateRailwayServiceVariables(projectDir, environment, serviceRegistry) {
+  await Promise.all(
+    Object.values(serviceRegistry)
+      .filter((entry) => entry?.name)
+      .map(async (entry) => {
+        entry.existingVariables = await loadRailwayServiceVariables(projectDir, environment, entry.name);
+      }),
+  );
+}
+
 async function resolveRailwayVariablePlan(config) {
   const localEnv = await loadRailwayLocalEnvDefaults(config.projectDir);
   const variablesMode = resolveRailwayVariablesMode(config.projectConfig);
-  const builtInServiceKeys = new Set(["admin", "api", "realtime", "worker"]);
+  const builtInServiceKeys = new Set(["admin", "api", "realtime", "worker", "landing", "pwa"]);
 
   const infra = {
     objectStorage: findRailwayService(
@@ -3131,6 +3783,8 @@ async function resolveRailwayVariablePlan(config) {
   const appServices = {
     admin: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "admin"),
     api: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "api"),
+    landing: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "landing"),
+    pwa: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "pwa"),
     realtime: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "realtime"),
     worker: findRailwayServiceByKey(config.services, config.appServiceSpecs, config.manifest, "worker"),
   };
@@ -3138,8 +3792,10 @@ async function resolveRailwayVariablePlan(config) {
   const serviceRegistry = {
     admin: appServices.admin ? { name: appServices.admin.name, variables: {} } : null,
     api: appServices.api ? { name: appServices.api.name, variables: {} } : null,
+    landing: appServices.landing ? { name: appServices.landing.name, variables: {} } : null,
     objectStorage: infra.objectStorage ? { name: infra.objectStorage.name, variables: {} } : null,
     postgres: infra.postgres ? { name: infra.postgres.name, variables: {} } : null,
+    pwa: appServices.pwa ? { name: appServices.pwa.name, variables: {} } : null,
     rabbitmq: infra.rabbitmq ? { name: infra.rabbitmq.name, variables: {} } : null,
     realtime: appServices.realtime ? { name: appServices.realtime.name, variables: {} } : null,
     worker: appServices.worker ? { name: appServices.worker.name, variables: {} } : null,
@@ -3163,6 +3819,10 @@ async function resolveRailwayVariablePlan(config) {
   const declaredVariables = resolveDeclaredRailwayVariables(config.projectConfig, config.environmentSelection);
   validateDeclaredRailwayVariableTargets(declaredVariables, serviceRegistry);
 
+  if (variablesMode === "preserve-remote") {
+    await hydrateRailwayServiceVariables(config.projectDir, config.railwayContext.environmentRef, serviceRegistry);
+  }
+
   const notices = [];
   if (!appServices.api) {
     notices.push("api service not found, skipping API variable wiring");
@@ -3175,6 +3835,12 @@ async function resolveRailwayVariablePlan(config) {
   }
   if (!appServices.worker) {
     notices.push("worker service not found, skipping worker variable wiring");
+  }
+  if (!appServices.landing) {
+    notices.push("landing service not found, skipping landing variable wiring");
+  }
+  if (!appServices.pwa) {
+    notices.push("pwa service not found, skipping pwa variable wiring");
   }
   if (!infra.postgres) {
     notices.push("postgres resource not found, DATABASE_URL wiring will be skipped");
@@ -3207,7 +3873,8 @@ async function resolveRailwayVariablePlan(config) {
     if (appServices.admin?.name) {
       variables.CORS_ALLOWED_ORIGINS = `https://${railwayReference(appServices.admin.name, "RAILWAY_PUBLIC_DOMAIN")}`;
     }
-    mergeRailwayServiceVariables(serviceRegistry.api, variables);
+    variables.PUBLIC_API_BASE_URL = `https://${railwayReference(appServices.api.name, "RAILWAY_PUBLIC_DOMAIN")}`;
+    assignManagedRailwayServiceVariables(serviceRegistry.api, variables, variablesMode);
   }
 
   if (variablesMode !== "replace" && appServices.realtime) {
@@ -3222,7 +3889,7 @@ async function resolveRailwayVariablePlan(config) {
     if (appServices.admin?.name) {
       variables.CORS_ALLOWED_ORIGINS = `https://${railwayReference(appServices.admin?.name || "admin", "RAILWAY_PUBLIC_DOMAIN")}`;
     }
-    mergeRailwayServiceVariables(serviceRegistry.realtime, variables);
+    assignManagedRailwayServiceVariables(serviceRegistry.realtime, variables, variablesMode);
   }
 
   if (variablesMode !== "replace" && appServices.admin) {
@@ -3234,7 +3901,7 @@ async function resolveRailwayVariablePlan(config) {
     if (appServices.realtime?.name) {
       variables.VITE_REALTIME_BASE_URL = `https://${railwayReference(appServices.realtime.name, "RAILWAY_PUBLIC_DOMAIN")}`;
     }
-    mergeRailwayServiceVariables(serviceRegistry.admin, variables);
+    assignManagedRailwayServiceVariables(serviceRegistry.admin, variables, variablesMode);
   }
 
   if (variablesMode !== "replace" && appServices.worker) {
@@ -3254,7 +3921,31 @@ async function resolveRailwayVariablePlan(config) {
     if (infra.objectStorage?.name) {
       Object.assign(variables, buildObjectStorageVariables(infra.objectStorage.name));
     }
-    mergeRailwayServiceVariables(serviceRegistry.worker, variables);
+    assignManagedRailwayServiceVariables(serviceRegistry.worker, variables, variablesMode);
+  }
+
+  if (variablesMode !== "replace" && appServices.landing) {
+    const variables = {};
+    Object.assign(variables, buildLandingDefaults(localEnv));
+    if (appServices.api?.name) {
+      variables.API_BASE_URL = `https://${railwayReference(appServices.api.name, "RAILWAY_PUBLIC_DOMAIN")}`;
+    }
+    if (appServices.pwa?.name) {
+      variables.PWA_BASE_URL = `https://${railwayReference(appServices.pwa.name, "RAILWAY_PUBLIC_DOMAIN")}`;
+    }
+    assignManagedRailwayServiceVariables(serviceRegistry.landing, variables, variablesMode);
+  }
+
+  if (variablesMode !== "replace" && appServices.pwa) {
+    const variables = {};
+    Object.assign(variables, buildPwaDefaults(localEnv));
+    if (appServices.api?.name) {
+      variables.VITE_API_BASE_URL = `https://${railwayReference(appServices.api.name, "RAILWAY_PUBLIC_DOMAIN")}/api/v1`;
+    }
+    if (appServices.realtime?.name) {
+      variables.VITE_REALTIME_BASE_URL = `https://${railwayReference(appServices.realtime.name, "RAILWAY_PUBLIC_DOMAIN")}`;
+    }
+    assignManagedRailwayServiceVariables(serviceRegistry.pwa, variables, variablesMode);
   }
 
   if (variablesMode !== "replace") {
@@ -3264,7 +3955,7 @@ async function resolveRailwayVariablePlan(config) {
       }
 
       const serviceDefaults = await loadServiceEnvDefaults(config.projectDir, spec.directory);
-      mergeRailwayServiceVariables(serviceRegistry[spec.key], serviceDefaults);
+      assignManagedRailwayServiceVariables(serviceRegistry[spec.key], serviceDefaults, variablesMode);
     }
   }
 
@@ -3296,7 +3987,7 @@ async function wireRailwayVariables(config) {
   updateRailwayManifestAppServices(
     config.manifest,
     Object.values(plan.appServices).filter(Boolean),
-    ["admin", "api", "realtime"].map((key) => findRailwayAppServiceSpec(config.appServiceSpecs, key)).filter(Boolean),
+    ["admin", "api", "realtime", "worker", "landing", "pwa"].map((key) => findRailwayAppServiceSpec(config.appServiceSpecs, key)).filter(Boolean),
     config.manifest.projectSlug,
   );
 
@@ -3322,15 +4013,19 @@ async function wireRailwayVariables(config) {
 }
 
 async function loadRailwayLocalEnvDefaults(projectDir) {
-  const [apiEnv, realtimeEnv, adminEnv] = await Promise.all([
+  const [apiEnv, realtimeEnv, adminEnv, landingEnv, pwaEnv] = await Promise.all([
     loadServiceEnvDefaults(projectDir, "api"),
     loadServiceEnvDefaults(projectDir, "realtime-gateway"),
     loadServiceEnvDefaults(projectDir, "admin"),
+    loadServiceEnvDefaults(projectDir, "landing"),
+    loadServiceEnvDefaults(projectDir, "pwa"),
   ]);
 
   return {
     admin: adminEnv,
     api: apiEnv,
+    landing: landingEnv,
+    pwa: pwaEnv,
     realtime: realtimeEnv,
   };
 }
@@ -3360,17 +4055,25 @@ function buildRailwaySharedSecrets(localEnv, existingVariables) {
   return {
     api: {
       ACCESS_TOKEN_TTL_MINUTES: localEnv.api.ACCESS_TOKEN_TTL_MINUTES || "60",
+      BREVO_API_KEY: localEnv.api.BREVO_API_KEY || "",
       DEFAULT_LOCALE: localEnv.api.DEFAULT_LOCALE || "fr",
       FILE_MAX_SIZE_MB: localEnv.api.FILE_MAX_SIZE_MB || "25",
       FILE_SIGNED_URL_TTL_MINUTES: localEnv.api.FILE_SIGNED_URL_TTL_MINUTES || "15",
       JWT_SECRET: jwtSecret,
       LOGIN_OTP_TTL_MINUTES: localEnv.api.LOGIN_OTP_TTL_MINUTES || "10",
+      MAIL_PROVIDER: localEnv.api.MAIL_PROVIDER || "mailchimp",
       MAILCHIMP_TRANSACTIONAL_API_KEY: localEnv.api.MAILCHIMP_TRANSACTIONAL_API_KEY || "dev-placeholder-key",
       MAIL_FROM_EMAIL: localEnv.api.MAIL_FROM_EMAIL || "no-reply@example.com",
       MAIL_FROM_NAME: localEnv.api.MAIL_FROM_NAME || "Boilerplate API",
       PASSWORD_RESET_OTP_TTL_MINUTES: localEnv.api.PASSWORD_RESET_OTP_TTL_MINUTES || "15",
+      PUBLIC_API_BASE_URL: localEnv.api.PUBLIC_API_BASE_URL || "",
       RABBITMQ_REALTIME_EXCHANGE: localEnv.api.RABBITMQ_REALTIME_EXCHANGE || "boilerplate.realtime",
       RABBITMQ_TASKS_EXCHANGE: localEnv.api.RABBITMQ_TASKS_EXCHANGE || "boilerplate.tasks",
+      SMTP_HOST: localEnv.api.SMTP_HOST || "",
+      SMTP_PASSWORD: localEnv.api.SMTP_PASSWORD || "",
+      SMTP_PORT: localEnv.api.SMTP_PORT || "587",
+      SMTP_USERNAME: localEnv.api.SMTP_USERNAME || "",
+      SMTP_USE_SSL: localEnv.api.SMTP_USE_SSL || "false",
       RABBITMQ_WORKER_CONSUMER_TAG: localEnv.api.RABBITMQ_WORKER_CONSUMER_TAG || "api-worker",
       RABBITMQ_WORKER_QUEUE: localEnv.api.RABBITMQ_WORKER_QUEUE || "api.worker.default",
       RATE_LIMIT_BURST: localEnv.api.RATE_LIMIT_BURST || "60",
@@ -3398,6 +4101,21 @@ function buildAdminDefaults(localEnv) {
     VITE_APP_NAME: localEnv.admin.VITE_APP_NAME || "Admin Blueprint",
     VITE_REALTIME_DEFAULT_TRANSPORT: localEnv.admin.VITE_REALTIME_DEFAULT_TRANSPORT || "sse",
     VITE_REALTIME_RECONNECT_DELAY_MS: localEnv.admin.VITE_REALTIME_RECONNECT_DELAY_MS || "3000",
+  };
+}
+
+function buildLandingDefaults(localEnv) {
+  return {
+    API_BASE_URL: localEnv.landing.API_BASE_URL || "",
+    PWA_BASE_URL: localEnv.landing.PWA_BASE_URL || "",
+  };
+}
+
+function buildPwaDefaults(localEnv) {
+  return {
+    VITE_API_BASE_URL: localEnv.pwa.VITE_API_BASE_URL || "",
+    VITE_APP_NAME: localEnv.pwa.VITE_APP_NAME || "Asaje PWA",
+    VITE_REALTIME_BASE_URL: localEnv.pwa.VITE_REALTIME_BASE_URL || "",
   };
 }
 
@@ -4168,6 +4886,16 @@ function parseStartArgs(argv) {
       continue;
     }
 
+    if (arg === "--skip-landing") {
+      options.landing = false;
+      continue;
+    }
+
+    if (arg === "--skip-pwa") {
+      options.pwa = false;
+      continue;
+    }
+
     positionals.push(arg);
   }
 
@@ -4258,12 +4986,24 @@ async function collectStartAnswers(args) {
       message: "Start admin frontend?",
     }),
   );
+  const landing = await prompt(
+    confirm({
+      initialValue: args.landing ?? true,
+      message: "Start landing surface?",
+    }),
+  );
+  const pwa = await prompt(
+    confirm({
+      initialValue: args.pwa ?? true,
+      message: "Start PWA surface?",
+    }),
+  );
 
   return {
     directory,
     installDependencies,
     profile: "custom",
-    selectedServices: [api && "api", worker && "worker", realtime && "realtime", admin && "admin"].filter(Boolean),
+    selectedServices: [api && "api", worker && "worker", realtime && "realtime", admin && "admin", landing && "landing", pwa && "pwa"].filter(Boolean),
     startInfra,
   };
 }
@@ -4277,9 +5017,16 @@ function buildSelectedServices(args) {
 }
 
 function inferProfileFromArgs(args) {
-  const selected = [args.api !== false && "api", args.worker !== false && "worker", args.realtime !== false && "realtime", args.admin !== false && "admin"].filter(Boolean);
+  const selected = [
+    args.api !== false && "api",
+    args.worker !== false && "worker",
+    args.realtime !== false && "realtime",
+    args.admin !== false && "admin",
+    args.landing !== false && "landing",
+    args.pwa !== false && "pwa",
+  ].filter(Boolean);
 
-  if (selected.length === 4) {
+  if (selected.length === 6) {
     return "full";
   }
 
@@ -4299,12 +5046,12 @@ function profileToServices(profile) {
     case "backend-only":
       return ["api", "worker", "realtime"];
     case "frontend-only":
-      return ["admin"];
+      return ["admin", "landing", "pwa"];
     case "custom":
       return [];
     case "full":
     default:
-      return ["api", "worker", "realtime", "admin"];
+      return ["api", "worker", "realtime", "admin", "landing", "pwa"];
   }
 }
 
@@ -4685,6 +5432,11 @@ function normalizeRelativePath(value) {
 
 async function ensureEnvFiles(projectDir) {
   for (const spec of ENV_FILE_SPECS) {
+    const serviceDir = spec.envPath.split("/")[0];
+    if (!(await fs.pathExists(path.join(projectDir, serviceDir)))) {
+      continue;
+    }
+
     const envPath = path.join(projectDir, spec.envPath);
     if (await fs.pathExists(envPath)) {
       continue;
@@ -4702,22 +5454,30 @@ async function ensureEnvFiles(projectDir) {
 
 async function loadRuntimeConfig(projectDir) {
   const configPath = path.join(projectDir, "asaje.config.json");
-  let ports = { admin: 5173, api: 8080, realtime: 8090 };
+  let ports = { admin: 5173, api: 8080, realtime: 8090, landing: 8088, pwa: 4174 };
 
   if (await fs.pathExists(configPath)) {
     const fileConfig = await fs.readJson(configPath);
     ports = {
       admin: Number(fileConfig?.ports?.admin || ports.admin),
       api: Number(fileConfig?.ports?.api || ports.api),
+      landing: Number(fileConfig?.ports?.landing || ports.landing),
+      pwa: Number(fileConfig?.ports?.pwa || ports.pwa),
       realtime: Number(fileConfig?.ports?.realtime || ports.realtime),
     };
   } else {
-    const apiEnv = await readEnvFile(path.join(projectDir, "api/.env"));
-    const realtimeEnv = await readEnvFile(path.join(projectDir, "realtime-gateway/.env"));
-    const adminEnv = await readEnvFile(path.join(projectDir, "admin/.env"));
+    const [apiEnv, realtimeEnv, adminEnv, landingEnv, pwaEnv] = await Promise.all([
+      readEnvFile(path.join(projectDir, "api/.env")),
+      readEnvFile(path.join(projectDir, "realtime-gateway/.env")),
+      readEnvFile(path.join(projectDir, "admin/.env")),
+      tryReadEnvFile(path.join(projectDir, "landing/.env")),
+      tryReadEnvFile(path.join(projectDir, "pwa/.env")),
+    ]);
     ports = {
       admin: Number(adminEnv.VITE_ADMIN_PORT || ports.admin),
       api: Number(apiEnv.PORT || ports.api),
+      landing: Number(landingEnv.PORT || ports.landing),
+      pwa: Number(pwaEnv.PORT || pwaEnv.VITE_PORT || ports.pwa),
       realtime: Number(realtimeEnv.PORT || ports.realtime),
     };
   }
@@ -4731,7 +5491,9 @@ function printStartSummary(projectDir, runtimeConfig, profile, selectedServices)
   console.log(`- Profile: ${pc.bold(profile)}`);
   console.log(`- Services: ${pc.bold(selectedServices.join(", "))}`);
   console.log(`- Admin URL: ${pc.bold(`http://localhost:${runtimeConfig.ports.admin}`)}`);
+  console.log(`- Landing URL: ${pc.bold(`http://localhost:${runtimeConfig.ports.landing}`)}`);
   console.log(`- API URL: ${pc.bold(`http://localhost:${runtimeConfig.ports.api}/api/v1`)}`);
+  console.log(`- PWA URL: ${pc.bold(`http://localhost:${runtimeConfig.ports.pwa}`)}`);
   console.log(`- Realtime URL: ${pc.bold(`http://localhost:${runtimeConfig.ports.realtime}`)}`);
   console.log(pc.dim("\nPress Ctrl+C to stop all managed services."));
 }
@@ -4776,6 +5538,26 @@ async function startManagedProcesses(projectDir, runtimeConfig, selectedServices
       command: "pnpm",
       cwd: path.join(projectDir, "admin"),
       name: "admin",
+    });
+  }
+
+  if (selectedServices.includes("landing") && await fs.pathExists(path.join(projectDir, "landing/package.json"))) {
+    specs.push({
+      args: ["dev", "--host", "0.0.0.0", "--port", String(runtimeConfig.ports.landing)],
+      color: pc.cyan,
+      command: "pnpm",
+      cwd: path.join(projectDir, "landing"),
+      name: "landing",
+    });
+  }
+
+  if (selectedServices.includes("pwa") && await fs.pathExists(path.join(projectDir, "pwa/package.json"))) {
+    specs.push({
+      args: ["dev", "--host", "0.0.0.0", "--port", String(runtimeConfig.ports.pwa)],
+      color: pc.white,
+      command: "pnpm",
+      cwd: path.join(projectDir, "pwa"),
+      name: "pwa",
     });
   }
 
@@ -4888,6 +5670,12 @@ async function ensureDestinationIsAvailable(destinationDir) {
 
 async function installProjectDependencies(projectDir) {
   await runCommand("pnpm", ["install"], path.join(projectDir, "admin"));
+  if (await fs.pathExists(path.join(projectDir, "landing/package.json"))) {
+    await runCommand("pnpm", ["install"], path.join(projectDir, "landing"));
+  }
+  if (await fs.pathExists(path.join(projectDir, "pwa/package.json"))) {
+    await runCommand("pnpm", ["install"], path.join(projectDir, "pwa"));
+  }
   await runCommand("go", ["mod", "download"], path.join(projectDir, "api"));
   await runCommand("go", ["mod", "download"], path.join(projectDir, "realtime-gateway"));
 }

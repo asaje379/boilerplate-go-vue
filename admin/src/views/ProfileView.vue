@@ -5,11 +5,12 @@ import { toTypedSchema } from "@vee-validate/zod";
 import { toast } from "vue-sonner";
 import { z } from "zod";
 import { useI18n } from "vue-i18n";
-import { AppForm, FormInput, FormPassword, FormSelect, FormSwitch } from "@/components/system";
+import { AppForm, FormInput, FormPassword, FormSelect, FormSwitch, PhoneInput } from "@/components/system";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supportedLocales } from "@/lib/i18n";
+import { isValidWhatsAppPhone } from "@/lib/phone";
 import { filesApi } from "@/services/api/files.api";
 import { useSessionStore } from "@/stores/session";
 
@@ -20,6 +21,7 @@ const avatarInputRef = ref<HTMLInputElement | null>(null);
 const isUploadingAvatar = ref(false);
 const isRemovingAvatar = ref(false);
 const isUpdatingSecurity = ref(false);
+const isUpdatingNotifications = ref(false);
 
 const localeOptions = supportedLocales.map((locale) => ({
   label: locale.toUpperCase(),
@@ -40,6 +42,7 @@ const profileInitialValues = computed(() => ({
   email: currentUser.value?.email || "",
   name: currentUser.value?.name || "",
   preferredLocale: currentUser.value?.preferredLocale || "fr",
+  whatsAppPhone: currentUser.value?.whatsAppPhone || "",
 }));
 
 const passwordInitialValues = {
@@ -53,6 +56,7 @@ const validationSchema = toTypedSchema(
     email: z.string().email(t("auth.validation.emailInvalid")),
     name: z.string().min(2, t("auth.validation.nameRequired")),
     preferredLocale: z.enum(["fr", "en"]),
+    whatsAppPhone: z.string().max(32).optional().refine(isValidWhatsAppPhone, t("auth.validation.whatsAppPhoneInvalid")),
   }),
 );
 
@@ -76,7 +80,7 @@ const passwordValidationSchema = toTypedSchema(
 async function handleSubmit(values: unknown) {
   try {
     await session.updateCurrentProfile(
-      values as { email: string; name: string; preferredLocale: "fr" | "en" },
+      values as { email: string; name: string; preferredLocale: "fr" | "en"; whatsAppPhone?: string },
     );
     toast.success(t("profile.info.success"));
   } catch {
@@ -148,6 +152,28 @@ async function updateTwoFactor(value: boolean | null) {
     isUpdatingSecurity.value = false;
   }
 }
+
+async function updateNotificationPreference(kind: "notifyEmail" | "notifyInApp" | "notifyWhatsapp", value: boolean | null) {
+  if (!currentUser.value) {
+    return;
+  }
+
+  isUpdatingNotifications.value = true;
+
+  try {
+    await session.updateNotificationPrefs({
+      notifyEmail: kind === "notifyEmail" ? value === true : currentUser.value.notifyEmail,
+      notifyInApp: kind === "notifyInApp" ? value === true : currentUser.value.notifyInApp,
+      notifyWhatsapp: kind === "notifyWhatsapp" ? value === true : currentUser.value.notifyWhatsapp,
+      whatsAppPhone: currentUser.value.whatsAppPhone,
+    });
+    toast.success(t("profile.notifications.success"));
+  } catch {
+    return;
+  } finally {
+    isUpdatingNotifications.value = false;
+  }
+}
 </script>
 
 <template>
@@ -213,7 +239,7 @@ async function updateTwoFactor(value: boolean | null) {
           :validation-schema="validationSchema"
           @submit="handleSubmit"
         >
-          <template #default="{ isSubmitting }">
+          <template #default="{ isSubmitting, setFieldValue, values }">
             <div class="space-y-4">
               <FormInput
                 name="name"
@@ -230,6 +256,12 @@ async function updateTwoFactor(value: boolean | null) {
                 :label="$t('profile.info.localeLabel')"
                 :options="localeOptions"
                 :placeholder="$t('profile.info.localePlaceholder')"
+              />
+              <PhoneInput
+                :label="$t('profile.info.whatsAppPhoneLabel')"
+                :model-value="String(values.whatsAppPhone ?? '')"
+                :placeholder="$t('profile.info.whatsAppPhonePlaceholder')"
+                @update:model-value="(value) => setFieldValue('whatsAppPhone', value)"
               />
               <Button type="submit" :disabled="isSubmitting">
                 {{ isSubmitting ? $t("profile.info.submitting") : $t("profile.info.submit") }}
@@ -287,6 +319,36 @@ async function updateTwoFactor(value: boolean | null) {
             </div>
           </template>
         </AppForm>
+      </CardContent>
+    </Card>
+
+    <Card class="max-w-3xl border-border/60 bg-card/90">
+      <CardHeader>
+        <CardTitle>{{ $t("profile.notifications.title") }}</CardTitle>
+        <CardDescription>{{ $t("profile.notifications.description") }}</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-6">
+        <FormSwitch
+          :label="$t('profile.notifications.emailLabel')"
+          :description="$t('profile.notifications.emailDescription')"
+          :disabled="isUpdatingNotifications"
+          :model-value="currentUser?.notifyEmail ?? true"
+          @update:model-value="(value) => updateNotificationPreference('notifyEmail', value)"
+        />
+        <FormSwitch
+          :label="$t('profile.notifications.inAppLabel')"
+          :description="$t('profile.notifications.inAppDescription')"
+          :disabled="isUpdatingNotifications"
+          :model-value="currentUser?.notifyInApp ?? true"
+          @update:model-value="(value) => updateNotificationPreference('notifyInApp', value)"
+        />
+        <FormSwitch
+          :label="$t('profile.notifications.whatsappLabel')"
+          :description="$t('profile.notifications.whatsappDescription')"
+          :disabled="isUpdatingNotifications || !currentUser?.whatsAppPhone"
+          :model-value="currentUser?.notifyWhatsapp ?? false"
+          @update:model-value="(value) => updateNotificationPreference('notifyWhatsapp', value)"
+        />
       </CardContent>
     </Card>
   </section>

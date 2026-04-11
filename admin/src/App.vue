@@ -3,10 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { ChevronRight, CircleHelp, PanelsTopLeft, ShieldCheck, UserRound } from "lucide-vue-next";
+import { Bell, ChevronRight, CircleHelp, PanelsTopLeft, ShieldCheck, UserRound } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import { provideModal } from "@/composables";
-import { AppLayout, AppModalHost, AppPreferencesMenu, AppUserMenu } from "@/components/system";
+import { AppLayout, AppModalHost, AppNotificationsMenu, AppPreferencesMenu, AppUserMenu } from "@/components/system";
 import { setSessionExpiredHandler } from "@/services/http/client";
 import { Toaster } from "@/components/ui/sonner";
 import {
@@ -22,8 +22,10 @@ import {
 } from "@/components/ui/sidebar";
 import { supportedLocales, type AppLocale } from "@/lib/i18n";
 import { usePreferencesStore, type ThemePreference } from "@/stores/preferences";
+import { useNotificationsStore } from "@/stores/notifications";
 import { useRealtimeStore } from "@/stores/realtime";
 import { useSessionStore } from "@/stores/session";
+import type { Notification } from "@/types/notification";
 
 const { t } = useI18n();
 const route = useRoute();
@@ -43,12 +45,15 @@ const preferences = usePreferencesStore();
 const { locale, resolvedTheme, themePreference } = storeToRefs(preferences);
 const session = useSessionStore();
 const { currentUser, isAuthenticated } = storeToRefs(session);
+const notifications = useNotificationsStore();
+const { isLoading: notificationsLoading, items: notificationItems } = storeToRefs(notifications);
 const realtime = useRealtimeStore();
 const { connectedUsersCount, isConnected: isRealtimeConnected } = storeToRefs(realtime);
 
 const navigation = computed(() => [
   { icon: PanelsTopLeft, label: t("nav.home"), to: "/" },
   { icon: UserRound, label: t("users.title"), to: "/users" },
+  { icon: Bell, label: t("nav.notifications"), to: "/notifications" },
   { icon: ShieldCheck, label: t("profile.info.title"), to: "/profile" },
   {
     children: [
@@ -108,6 +113,18 @@ const currentPage = computed(() => {
   return undefined;
 });
 
+const notificationMenuItems = computed(() =>
+  notificationItems.value.map((notification) => ({
+    description: notification.body,
+    id: notification.id,
+    time: new Date(notification.createdAt).toLocaleString(),
+    title: notification.title,
+    unread: !notification.readAt,
+  })),
+);
+
+let unsubscribeNotification: (() => void) | null = null;
+
 function setLocale(value: AppLocale) {
   preferences.setLocale(value);
 }
@@ -130,6 +147,18 @@ async function logout() {
   }
 }
 
+async function handleNotificationSelect(id: string) {
+  const selected = notificationItems.value.find((notification) => notification.id === id);
+  if (!selected || selected.readAt) {
+    return;
+  }
+  await notifications.markAsRead(id);
+}
+
+async function handleMarkAllNotificationsRead() {
+  await notifications.markAllAsRead();
+}
+
 function togglePlayground() {
   isPlaygroundOpen.value = !isPlaygroundOpen.value;
 }
@@ -138,10 +167,21 @@ watch(
   isAuthenticated,
   (authenticated) => {
     if (authenticated) {
-      realtime.connect({ channels: ["presence"] });
+      void notifications.fetchLatest();
+      realtime.connect({ channels: ["presence", "notifications"] });
+      unsubscribeNotification?.();
+      unsubscribeNotification = realtime.subscribe("notification.created", (event) => {
+        const payload = (event.data as { notification?: Notification } | undefined)?.notification;
+        if (payload) {
+          notifications.pushRealtimeNotification(payload);
+        }
+      });
       return;
     }
 
+    unsubscribeNotification?.();
+    unsubscribeNotification = null;
+    notifications.reset();
     realtime.disconnect();
   },
   { immediate: true },
@@ -157,6 +197,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  unsubscribeNotification?.();
   realtime.disconnect();
 });
 </script>
@@ -249,6 +290,13 @@ onBeforeUnmount(() => {
               @update:theme="setTheme"
             />
           </div>
+
+          <AppNotificationsMenu
+            :loading="notificationsLoading"
+            :notifications="notificationMenuItems"
+            @mark-all-read="handleMarkAllNotificationsRead"
+            @select="handleNotificationSelect"
+          />
 
           <AppUserMenu
             compact

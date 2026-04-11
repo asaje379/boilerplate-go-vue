@@ -18,9 +18,12 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=build /out/api ./api
+COPY --from=build /src/notifications.yaml ./notifications.yaml
+COPY --from=build /src/crons.yaml ./crons.yaml
 
 ENV GIN_MODE=release
 ENV PORT=8080
+ENV API_COMMAND=serve
 
 EXPOSE 8080
 

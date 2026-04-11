@@ -31,17 +31,21 @@ Serveur web Go base sur Gin, Gorm, Postgres, JWT, refresh tokens et Swaggo, orga
 - `SEED_USER_PASSWORD`: mot de passe du user seed optionnel
 - `SWAGGER_USERNAME` / `SWAGGER_PASSWORD`: basic auth pour Swagger
 - `CORS_ALLOWED_ORIGINS`: whitelist des origines front autorisees
+- `PUBLIC_API_BASE_URL`: base URL publique de l'API, utilisee pour construire les URLs media proxy
 - `RATE_LIMIT_RPM` / `RATE_LIMIT_BURST`: limites rate limiting local par IP
 - `REGISTER_ALLOWED_EMAILS`: whitelist explicite d'emails autorises a s'inscrire
 - `REGISTER_ALLOWED_DOMAINS`: whitelist de domaines email autorises a s'inscrire
 - `OBJECT_STORAGE_PROVIDER`: `aws` ou `minio`
 - `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_REGION`
 - `MINIO_ENDPOINT`, `MINIO_PORT`, `MINIO_USE_SSL`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET_NAME`, `MINIO_PUBLIC_URL`
-- `MAILCHIMP_TRANSACTIONAL_API_KEY`, `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME`
+- `MAIL_PROVIDER`: `mailchimp`, `brevo` ou `smtp`
+- `MAILCHIMP_TRANSACTIONAL_API_KEY`, `BREVO_API_KEY`, `MAIL_FROM_EMAIL`, `MAIL_FROM_NAME`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_SSL`
 - `RABBITMQ_URL`: URL AMQP vers RabbitMQ 4.1+
 - `RABBITMQ_TASKS_EXCHANGE`: exchange topic pour les taches asynchrones (`boilerplate.tasks`)
 - `RABBITMQ_REALTIME_EXCHANGE`: exchange topic pour les evenements realtime (`boilerplate.realtime`)
 - `RABBITMQ_WORKER_QUEUE`, `RABBITMQ_WORKER_CONSUMER_TAG`: queue et consumer tag du worker API
+- `WASENDER_API_KEY`: provider WhatsApp optionnel
 
 ## Demarrage
 
@@ -98,9 +102,15 @@ Swagger est protege par basic auth.
 - `POST /api/v1/files/upload`
 - `GET /api/v1/files`
 - `GET /api/v1/files/:id`
+- `GET /api/v1/files/:id/download`
 - `DELETE /api/v1/files/:id`
 - `GET /api/v1/files/:id/download-signed`
 - `GET /api/v1/files/public/:id/download`
+- `GET /api/v1/media/:id`
+- `GET /api/v1/notifications`
+- `GET /api/v1/notifications/unread-count`
+- `POST /api/v1/notifications/:id/read`
+- `POST /api/v1/notifications/read-all`
 
 ## Pagination et recherche
 
@@ -132,11 +142,12 @@ Swagger est protege par basic auth.
 - Les uploads sont valides par taille maximale via `FILE_MAX_SIZE_MB`
 - Un utilisateur peut reutiliser un fichier uploadé comme photo de profil via `PATCH /api/v1/users/me/profile-photo`
 - `download-signed` retourne une URL temporaire signee
-- `download public` redirige vers l'URL publique de l'objet si le fichier est public
+- `download public` stream directement le binaire si le fichier est public
+- `GET /api/v1/media/:id` expose une URL media stable basee sur l'API, utile pour les frontends publics et les PWAs
 
 ## Emails transactionnels et OTP
 
-- L'envoi d'email passe par Mailchimp Transactional (Mandrill)
+- L'envoi d'email peut passer par Mailchimp Transactional, Brevo ou SMTP
 - Tous les emails transactionnels passent par un template HTML unique avec contenu localise
 - Locales supportees actuellement: `fr` et `en`
 - Le login declenche un OTP envoye par email avant emission des tokens
@@ -147,8 +158,16 @@ Swagger est protege par basic auth.
 
 - RabbitMQ est utilise comme colonne vertebrale inter-services, avec une cible serveur minimum `4.1`
 - l'API publie des taches asynchrones sur `RABBITMQ_TASKS_EXCHANGE`
-- le worker API consomme actuellement `email.send` pour l'envoi des emails transactionnels
+- le worker API consomme `email.send` pour l'envoi des emails transactionnels et relaye des notifications applicatives basees sur `notifications.yaml`
 - l'API publie aussi des evenements realtime sur `RABBITMQ_REALTIME_EXCHANGE` pour le service `realtime-gateway`
+
+## Notifications et crons
+
+- Les notifications metier generiques se configurent dans `notifications.yaml`
+- Les canaux supportes par defaut sont `in_app` et `email`
+- Les notifications in-app sont persistees dans la table `notifications` puis republiees en realtime sur `notification.created`
+- Les crons worker se configurent dans `crons.yaml`
+- Deux jobs d'entretien sont fournis: purge des OTP expires et purge des refresh tokens expires/revoques
 
 ## Seeds
 

@@ -3,6 +3,7 @@ package router
 import (
 	appauth "api/internal/application/auth"
 	appfile "api/internal/application/file"
+	appnotification "api/internal/application/notification"
 	appuser "api/internal/application/user"
 	userdomain "api/internal/domain/user"
 	"api/internal/interfaces/http/handlers"
@@ -17,7 +18,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func New(cfg config.Config, db *gorm.DB, authService appauth.Service, userService appuser.Service, fileService appfile.Service) *gin.Engine {
+func New(cfg config.Config, db *gorm.DB, authService appauth.Service, userService appuser.Service, fileService appfile.Service, notificationService appnotification.Service) *gin.Engine {
 	engine := gin.Default()
 	engine.SetTrustedProxies(nil)
 	engine.Use(middleware.RequestID())
@@ -28,12 +29,14 @@ func New(cfg config.Config, db *gorm.DB, authService appauth.Service, userServic
 	healthHandler := handlers.NewHealthHandler(db)
 	authHandler := handlers.NewAuthHandler(authService, fileService)
 	fileHandler := handlers.NewFileHandler(fileService)
+	notificationHandler := handlers.NewNotificationHandler(notificationService)
 	userHandler := handlers.NewUserHandler(userService, fileService)
 
 	v1 := engine.Group("/api/v1")
 	{
 		v1.GET("/health", healthHandler.GetHealth)
 		v1.GET("/files/public/:id/download", fileHandler.PublicDownload)
+		v1.GET("/media/:id", fileHandler.StreamDownload)
 
 		authRoutes := v1.Group("/auth")
 		{
@@ -53,9 +56,15 @@ func New(cfg config.Config, db *gorm.DB, authService appauth.Service, userServic
 			protected.POST("/files/upload", fileHandler.Upload)
 			protected.GET("/files", fileHandler.List)
 			protected.GET("/files/:id", fileHandler.GetByID)
+			protected.GET("/files/:id/download", fileHandler.ProxyDownload)
 			protected.DELETE("/files/:id", fileHandler.Delete)
 			protected.GET("/files/:id/download-signed", fileHandler.SignedDownload)
+			protected.GET("/notifications", notificationHandler.List)
+			protected.GET("/notifications/unread-count", notificationHandler.UnreadCount)
+			protected.POST("/notifications/:id/read", notificationHandler.MarkAsRead)
+			protected.POST("/notifications/read-all", notificationHandler.MarkAllAsRead)
 			protected.PATCH("/users/me", userHandler.UpdateCurrentProfile)
+			protected.PATCH("/users/me/notifications", userHandler.UpdateNotificationPrefs)
 			protected.POST("/users/me/change-password", userHandler.ChangePassword)
 			protected.PATCH("/users/me/profile-photo", userHandler.UpdateProfilePhoto)
 			protected.PATCH("/users/me/security", userHandler.UpdateSecurity)
