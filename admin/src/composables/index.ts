@@ -1,4 +1,5 @@
 export { useDataTable } from './use-data-table'
+export { useResourceCrud } from './use-resource-crud'
 export { useAlert } from './use-alert'
 export { useConfirm } from './use-confirm'
 export { provideModal, useModal } from './use-modal'

@@ -11,6 +11,10 @@ type UserModel struct {
 	ID                 string            `gorm:"primaryKey;size:32"`
 	Name               string            `gorm:"size:120;not null"`
 	Email              string            `gorm:"size:255;not null;uniqueIndex"`
+	WhatsAppPhone      string            `gorm:"size:32;not null;default:''"`
+	NotifyEmail        bool              `gorm:"not null;default:true"`
+	NotifyInApp        bool              `gorm:"not null;default:true"`
+	NotifyWhatsapp     bool              `gorm:"not null;default:false"`
 	PasswordHash       string            `gorm:"size:255;not null"`
 	MustChangePassword bool              `gorm:"not null;default:false"`
 	PreferredLocale    userdomain.Locale `gorm:"type:varchar(8);not null;default:'fr'"`
@@ -31,6 +35,10 @@ func (m UserModel) toDomain() *userdomain.User {
 		ID:                 m.ID,
 		Name:               m.Name,
 		Email:              m.Email,
+		WhatsAppPhone:      m.WhatsAppPhone,
+		NotifyEmail:        m.NotifyEmail,
+		NotifyInApp:        m.NotifyInApp,
+		NotifyWhatsapp:     m.NotifyWhatsapp,
 		PasswordHash:       m.PasswordHash,
 		MustChangePassword: m.MustChangePassword,
 		PreferredLocale:    m.PreferredLocale,
@@ -48,6 +56,10 @@ func fromDomainUser(u *userdomain.User) *UserModel {
 		ID:                 u.ID,
 		Name:               u.Name,
 		Email:              u.Email,
+		WhatsAppPhone:      u.WhatsAppPhone,
+		NotifyEmail:        u.NotifyEmail,
+		NotifyInApp:        u.NotifyInApp,
+		NotifyWhatsapp:     u.NotifyWhatsapp,
 		PasswordHash:       u.PasswordHash,
 		MustChangePassword: u.MustChangePassword,
 		PreferredLocale:    u.PreferredLocale,

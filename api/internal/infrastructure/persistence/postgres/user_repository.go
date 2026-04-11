@@ -25,6 +25,8 @@ func (r UserRepository) Create(ctx context.Context, user *userdomain.User) error
 	}
 	user.IsActive = true
 	user.TwoFactorEnabled = false
+	user.NotifyEmail = true
+	user.NotifyInApp = true
 
 	model := fromDomainUser(user)
 	if err := r.db.WithContext(ctx).Create(model).Error; err != nil {
@@ -68,17 +70,27 @@ func (r UserRepository) GetByEmail(ctx context.Context, email string) (*userdoma
 	return model.toDomain(), nil
 }
 
+func (r UserRepository) ListIDsByRole(ctx context.Context, role userdomain.Role) ([]string, error) {
+	ids := make([]string, 0)
+	if err := r.db.WithContext(ctx).Model(&UserModel{}).Where("role = ?", role).Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
+
 func (r UserRepository) List(ctx context.Context, params appcommon.ListParams) ([]userdomain.User, int64, error) {
 	query, err := applyListQuery(
 		r.db.WithContext(ctx).Model(&UserModel{}),
 		params,
-		[]string{"name", "email", "role"},
+		[]string{"name", "email", "whats_app_phone", "role"},
 		map[string]string{
-			"createdAt": "created_at",
-			"updatedAt": "updated_at",
-			"name":      "name",
-			"email":     "email",
-			"role":      "role",
+			"createdAt":     "created_at",
+			"updatedAt":     "updated_at",
+			"name":          "name",
+			"email":         "email",
+			"whatsAppPhone": "whats_app_phone",
+			"role":          "role",
 		},
 	)
 	if err != nil {
@@ -119,6 +131,10 @@ func (r UserRepository) Update(ctx context.Context, user *userdomain.User) error
 		Updates(map[string]any{
 			"name":                 user.Name,
 			"email":                user.Email,
+			"whats_app_phone":      user.WhatsAppPhone,
+			"notify_email":         user.NotifyEmail,
+			"notify_in_app":        user.NotifyInApp,
+			"notify_whatsapp":      user.NotifyWhatsapp,
 			"must_change_password": user.MustChangePassword,
 			"preferred_locale":     user.PreferredLocale,
 			"two_factor_enabled":   user.TwoFactorEnabled,

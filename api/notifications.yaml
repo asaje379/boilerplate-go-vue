@@ -1,0 +1,32 @@
+notifications:
+  file.uploaded:
+    channels: [in_app, email]
+    templates:
+      fr:
+        title: "Fichier televerse"
+        body: 'Le fichier "{{.originalName}}" a ete televerse.'
+        email_subject: "Nouveau fichier televerse"
+      en:
+        title: "File uploaded"
+        body: 'The file "{{.originalName}}" was uploaded.'
+        email_subject: "New file uploaded"
+
+  file.deleted:
+    channels: [in_app]
+    templates:
+      fr:
+        title: "Fichier supprime"
+        body: 'Le fichier "{{.originalName}}" a ete supprime.'
+      en:
+        title: "File deleted"
+        body: 'The file "{{.originalName}}" was deleted.'
+
+  user.updated:
+    channels: [in_app]
+    templates:
+      fr:
+        title: "Compte mis a jour"
+        body: "Les informations de votre compte ont ete mises a jour."
+      en:
+        title: "Account updated"
+        body: "Your account details were updated."

@@ -9,6 +9,10 @@ type UserResponse struct {
 	ID                 string            `json:"id"`
 	Name               string            `json:"name"`
 	Email              string            `json:"email"`
+	WhatsAppPhone      string            `json:"whatsAppPhone,omitempty"`
+	NotifyEmail        bool              `json:"notifyEmail"`
+	NotifyInApp        bool              `json:"notifyInApp"`
+	NotifyWhatsapp     bool              `json:"notifyWhatsapp"`
 	PreferredLocale    userdomain.Locale `json:"preferredLocale" example:"fr" enums:"fr,en"`
 	MustChangePassword bool              `json:"mustChangePassword"`
 	ProfilePhotoFileID *string           `json:"profilePhotoFileId,omitempty"`
@@ -40,6 +44,10 @@ func ToUserResponse(user *userdomain.User, profilePhotoURL string) UserResponse 
 		ID:                 user.ID,
 		Name:               user.Name,
 		Email:              user.Email,
+		WhatsAppPhone:      user.WhatsAppPhone,
+		NotifyEmail:        user.NotifyEmail,
+		NotifyInApp:        user.NotifyInApp,
+		NotifyWhatsapp:     user.NotifyWhatsapp,
 		PreferredLocale:    user.PreferredLocale.Normalize(),
 		MustChangePassword: user.MustChangePassword,
 		ProfilePhotoFileID: user.ProfilePhotoFileID,

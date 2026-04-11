@@ -34,6 +34,7 @@ type CreateInput struct {
 	Email              string
 	Name               string
 	Password           string
+	WhatsAppPhone      string
 	MustChangePassword bool
 	PreferredLocale    userdomain.Locale
 	Role               userdomain.Role
@@ -46,6 +47,7 @@ type UpdateInput struct {
 	PreferredLocale userdomain.Locale
 	Role            userdomain.Role
 	UserID          string
+	WhatsAppPhone   string
 }
 
 type UpdateProfileInput struct {
@@ -53,6 +55,7 @@ type UpdateProfileInput struct {
 	Email           string
 	Name            string
 	PreferredLocale userdomain.Locale
+	WhatsAppPhone   string
 }
 
 type ChangePasswordInput struct {
@@ -66,24 +69,36 @@ type UpdateSecurityInput struct {
 	TwoFactorEnabled bool
 }
 
+type UpdateNotificationPrefsInput struct {
+	ActorID        string
+	NotifyEmail    bool
+	NotifyInApp    bool
+	NotifyWhatsapp bool
+	WhatsAppPhone  string
+}
+
 func NewService(users userdomain.Repository, files filedomain.Repository, events appcommon.EventPublisher, emailValidator platformemail.Validator) Service {
 	return Service{users: users, files: files, events: events, emailValidator: emailValidator}
 }
 
-func normalizeMutableFields(name, email string, preferredLocale userdomain.Locale) (string, string, userdomain.Locale, error) {
+func normalizeMutableFields(name, email, whatsAppPhone string, preferredLocale userdomain.Locale) (string, string, string, userdomain.Locale, error) {
 	normalizedName := strings.TrimSpace(name)
 	normalizedEmail := strings.TrimSpace(strings.ToLower(email))
+	normalizedPhone := strings.TrimSpace(whatsAppPhone)
 	normalizedLocale := preferredLocale.Normalize()
 
 	if normalizedName == "" || normalizedEmail == "" {
-		return "", "", "", fmt.Errorf("%w: name and email are required", appcommon.ErrValidation)
+		return "", "", "", "", fmt.Errorf("%w: name and email are required", appcommon.ErrValidation)
 	}
 
 	if !normalizedLocale.IsValid() {
-		return "", "", "", fmt.Errorf("%w: invalid preferred locale", appcommon.ErrValidation)
+		return "", "", "", "", fmt.Errorf("%w: invalid preferred locale", appcommon.ErrValidation)
+	}
+	if !userdomain.IsValidWhatsAppPhone(normalizedPhone) {
+		return "", "", "", "", fmt.Errorf("%w: whatsapp phone must be in E.164 format", appcommon.ErrValidation)
 	}
 
-	return normalizedName, normalizedEmail, normalizedLocale, nil
+	return normalizedName, normalizedEmail, normalizedPhone, normalizedLocale, nil
 }
 
 func (s Service) GetByID(ctx context.Context, id string) (*userdomain.User, error) {
@@ -120,7 +135,7 @@ func (s Service) Create(ctx context.Context, input CreateInput) (*userdomain.Use
 		return nil, appcommon.ErrForbidden
 	}
 
-	name, email, preferredLocale, err := normalizeMutableFields(input.Name, input.Email, input.PreferredLocale)
+	name, email, whatsAppPhone, preferredLocale, err := normalizeMutableFields(input.Name, input.Email, input.WhatsAppPhone, input.PreferredLocale)
 	if err != nil {
 		return nil, err
 	}
@@ -154,6 +169,7 @@ func (s Service) Create(ctx context.Context, input CreateInput) (*userdomain.Use
 		ID:                 platformid.New(),
 		Name:               name,
 		Email:              email,
+		WhatsAppPhone:      whatsAppPhone,
 		PasswordHash:       string(hash),
 		MustChangePassword: input.MustChangePassword,
 		PreferredLocale:    preferredLocale,
@@ -174,6 +190,7 @@ func (s Service) Create(ctx context.Context, input CreateInput) (*userdomain.Use
 			"userId":             user.ID,
 			"email":              user.Email,
 			"name":               user.Name,
+			"whatsappPhone":      user.WhatsAppPhone,
 			"role":               user.Role,
 			"preferredLocale":    user.PreferredLocale,
 			"mustChangePassword": user.MustChangePassword,
@@ -193,7 +210,7 @@ func (s Service) Update(ctx context.Context, input UpdateInput) (*userdomain.Use
 		return nil, err
 	}
 
-	name, email, preferredLocale, err := normalizeMutableFields(input.Name, input.Email, input.PreferredLocale)
+	name, email, whatsAppPhone, preferredLocale, err := normalizeMutableFields(input.Name, input.Email, input.WhatsAppPhone, input.PreferredLocale)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +232,7 @@ func (s Service) Update(ctx context.Context, input UpdateInput) (*userdomain.Use
 
 	account.Name = name
 	account.Email = email
+	account.WhatsAppPhone = whatsAppPhone
 	account.PreferredLocale = preferredLocale
 	account.Role = input.Role
 
@@ -232,6 +250,7 @@ func (s Service) Update(ctx context.Context, input UpdateInput) (*userdomain.Use
 			"userId":          account.ID,
 			"email":           account.Email,
 			"name":            account.Name,
+			"whatsappPhone":   account.WhatsAppPhone,
 			"role":            account.Role,
 			"preferredLocale": account.PreferredLocale,
 		},
@@ -246,7 +265,7 @@ func (s Service) UpdateCurrentProfile(ctx context.Context, input UpdateProfileIn
 		return nil, err
 	}
 
-	name, email, preferredLocale, err := normalizeMutableFields(input.Name, input.Email, input.PreferredLocale)
+	name, email, whatsAppPhone, preferredLocale, err := normalizeMutableFields(input.Name, input.Email, input.WhatsAppPhone, input.PreferredLocale)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +283,7 @@ func (s Service) UpdateCurrentProfile(ctx context.Context, input UpdateProfileIn
 
 	account.Name = name
 	account.Email = email
+	account.WhatsAppPhone = whatsAppPhone
 	account.PreferredLocale = preferredLocale
 
 	if err := s.users.Update(ctx, account); err != nil {
@@ -280,6 +300,7 @@ func (s Service) UpdateCurrentProfile(ctx context.Context, input UpdateProfileIn
 			"userId":          account.ID,
 			"email":           account.Email,
 			"name":            account.Name,
+			"whatsappPhone":   account.WhatsAppPhone,
 			"preferredLocale": account.PreferredLocale,
 		},
 	})
@@ -351,6 +372,43 @@ func (s Service) UpdateSecurity(ctx context.Context, input UpdateSecurityInput) 
 		Data: map[string]any{
 			"userId":           account.ID,
 			"twoFactorEnabled": input.TwoFactorEnabled,
+		},
+	})
+
+	return s.GetByID(ctx, account.ID)
+}
+
+func (s Service) UpdateNotificationPrefs(ctx context.Context, input UpdateNotificationPrefsInput) (*userdomain.User, error) {
+	account, err := s.GetByID(ctx, input.ActorID)
+	if err != nil {
+		return nil, err
+	}
+
+	account.NotifyEmail = input.NotifyEmail
+	account.NotifyInApp = input.NotifyInApp
+	account.WhatsAppPhone = strings.TrimSpace(input.WhatsAppPhone)
+	if !userdomain.IsValidWhatsAppPhone(account.WhatsAppPhone) {
+		return nil, fmt.Errorf("%w: whatsapp phone must be in E.164 format", appcommon.ErrValidation)
+	}
+	account.NotifyWhatsapp = input.NotifyWhatsapp && account.WhatsAppPhone != ""
+
+	if err := s.users.Update(ctx, account); err != nil {
+		return nil, err
+	}
+
+	s.publish(ctx, appcommon.RealtimeEvent{
+		ID:             platformid.New(),
+		Type:           "user.notifications.updated",
+		Channel:        "users",
+		AllowedRoles:   []string{string(userdomain.RoleAdmin)},
+		AllowedUserIDs: []string{account.ID},
+		OccurredAt:     time.Now().UTC(),
+		Data: map[string]any{
+			"userId":         account.ID,
+			"notifyEmail":    account.NotifyEmail,
+			"notifyInApp":    account.NotifyInApp,
+			"notifyWhatsapp": account.NotifyWhatsapp,
+			"whatsappPhone":  account.WhatsAppPhone,
 		},
 	})
 

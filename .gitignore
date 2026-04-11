@@ -42,6 +42,12 @@ coverage.out
 /admin/*.tsbuildinfo
 /admin/test-results/
 /admin/playwright-report/
+/landing/.env
+/landing/node_modules/
+/landing/dist/
+/pwa/.env
+/pwa/node_modules/
+/pwa/dist/
 
 # CLI
 /cli/node_modules/

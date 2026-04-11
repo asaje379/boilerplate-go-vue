@@ -1,0 +1,46 @@
+{
+  "directory": "/Users/salemaffa/Documents/salem/boilerplate-go-vue",
+  "environment": {
+    "configKey": null,
+    "railwayEnvironment": "production"
+  },
+  "exportedAt": "2026-04-03T01:13:35.418Z",
+  "services": [
+    {
+      "aliases": [
+        "api",
+        "backend",
+        "server"
+      ],
+      "baseName": "api",
+      "directory": "api",
+      "key": "api",
+      "serviceName": "boilerplate-go-vue-api",
+      "variables": {}
+    },
+    {
+      "aliases": [
+        "admin",
+        "frontend",
+        "web"
+      ],
+      "baseName": "admin",
+      "directory": "admin",
+      "key": "admin",
+      "serviceName": "boilerplate-go-vue-admin",
+      "variables": {}
+    },
+    {
+      "aliases": [
+        "realtime-gateway",
+        "realtime"
+      ],
+      "baseName": "realtime-gateway",
+      "directory": "realtime-gateway",
+      "key": "realtime",
+      "serviceName": "boilerplate-go-vue-realtime-gateway",
+      "variables": {}
+    }
+  ],
+  "variablesMode": "merge"
+}

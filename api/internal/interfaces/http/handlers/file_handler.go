@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -216,13 +218,53 @@ func (h FileHandler) SignedDownload(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/files/public/{id}/download [get]
 func (h FileHandler) PublicDownload(c *gin.Context) {
-	url, _, err := h.fileService.GetPublicDownloadURL(c.Request.Context(), c.Param("id"))
+	obj, file, err := h.fileService.StreamPublicFile(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		h.handleError(c, err)
 		return
 	}
+	defer obj.Body.Close()
 
-	c.Redirect(http.StatusFound, url)
+	streamFile(c, obj, file.OriginalName, "public, max-age=86400")
+}
+
+func (h FileHandler) ProxyDownload(c *gin.Context) {
+	current, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: appcommon.ErrUnauthorized.Error()})
+		return
+	}
+
+	obj, file, err := h.fileService.StreamFile(c.Request.Context(), c.Param("id"), current.ID, current.Role)
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	defer obj.Body.Close()
+
+	streamFile(c, obj, file.OriginalName, "private, max-age=3600")
+}
+
+func (h FileHandler) StreamDownload(c *gin.Context) {
+	obj, file, err := h.fileService.StreamAnyFile(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		h.handleError(c, err)
+		return
+	}
+	defer obj.Body.Close()
+
+	streamFile(c, obj, file.OriginalName, "public, max-age=86400")
+}
+
+func streamFile(c *gin.Context, obj *filedomain.GetObjectOutput, fileName, cacheControl string) {
+	c.Header("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName))
+	c.Header("Cache-Control", cacheControl)
+	c.Header("Content-Type", obj.ContentType)
+	if obj.Size > 0 {
+		c.Header("Content-Length", fmt.Sprintf("%d", obj.Size))
+	}
+	c.Status(http.StatusOK)
+	_, _ = io.Copy(c.Writer, obj.Body)
 }
 
 func (h FileHandler) handleError(c *gin.Context, err error) {

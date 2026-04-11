@@ -1,0 +1,10 @@
+crons:
+  prune_expired_email_otps:
+    enabled: false
+    interval: 1h
+    description: "Delete expired or consumed OTP records older than the retention window"
+
+  prune_expired_refresh_tokens:
+    enabled: false
+    interval: 6h
+    description: "Delete expired or long-revoked refresh tokens"

@@ -27,6 +27,7 @@ type Config struct {
 	SwaggerUsername              string
 	SwaggerPassword              string
 	CORSAllowedOrigins           []string
+	PublicAPIBaseURL             string
 	RateLimitRPM                 int
 	RateLimitBurst               int
 	AllowedEmails                []string
@@ -42,15 +43,25 @@ type Config struct {
 	MinIOPort                    int
 	MinIOUseSSL                  bool
 	MinIOPublicURL               string
+	MailProvider                 string
 	MailchimpTransactionalAPIKey string
+	BrevoAPIKey                  string
 	MailFromEmail                string
 	MailFromName                 string
+	SMTPHost                     string
+	SMTPPort                     int
+	SMTPUsername                 string
+	SMTPPassword                 string
+	SMTPUseSSL                   bool
 	DefaultLocale                string
 	RabbitMQURL                  string
 	RabbitMQTasksExchange        string
 	RabbitMQRealtimeExchange     string
 	RabbitMQWorkerQueue          string
 	RabbitMQWorkerConsumerTag    string
+	WorkerHTTPEnabled            bool
+	WorkerHTTPPort               string
+	WasenderAPIKey               string
 }
 
 func Load() (Config, error) {
@@ -104,6 +115,21 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("MINIO_USE_SSL must be a boolean")
 	}
 
+	smtpPort, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
+	if err != nil || smtpPort <= 0 {
+		return Config{}, fmt.Errorf("SMTP_PORT must be a positive integer")
+	}
+
+	smtpUseSSL, err := strconv.ParseBool(getEnv("SMTP_USE_SSL", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("SMTP_USE_SSL must be a boolean")
+	}
+
+	workerHTTPEnabled, err := strconv.ParseBool(firstNonEmpty(os.Getenv("WORKER_HTTP_ENABLED"), os.Getenv("WORKER_HEALTH_CHECK"), "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("WORKER_HTTP_ENABLED must be a boolean")
+	}
+
 	cfg := Config{
 		Port:                         getEnv("PORT", "8080"),
 		DatabaseURL:                  os.Getenv("DATABASE_URL"),
@@ -123,6 +149,7 @@ func Load() (Config, error) {
 		SwaggerUsername:              os.Getenv("SWAGGER_USERNAME"),
 		SwaggerPassword:              os.Getenv("SWAGGER_PASSWORD"),
 		CORSAllowedOrigins:           splitCSV(os.Getenv("CORS_ALLOWED_ORIGINS")),
+		PublicAPIBaseURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_API_BASE_URL")), "/"),
 		RateLimitRPM:                 rateLimitRPM,
 		RateLimitBurst:               rateLimitBurst,
 		AllowedEmails:                splitCSV(os.Getenv("REGISTER_ALLOWED_EMAILS")),
@@ -138,15 +165,25 @@ func Load() (Config, error) {
 		MinIOPort:                    minioPort,
 		MinIOUseSSL:                  minioUseSSL,
 		MinIOPublicURL:               strings.TrimSpace(os.Getenv("MINIO_PUBLIC_URL")),
+		MailProvider:                 strings.ToLower(getEnv("MAIL_PROVIDER", "mailchimp")),
 		MailchimpTransactionalAPIKey: strings.TrimSpace(os.Getenv("MAILCHIMP_TRANSACTIONAL_API_KEY")),
+		BrevoAPIKey:                  strings.TrimSpace(os.Getenv("BREVO_API_KEY")),
 		MailFromEmail:                strings.TrimSpace(os.Getenv("MAIL_FROM_EMAIL")),
 		MailFromName:                 getEnv("MAIL_FROM_NAME", "Boilerplate API"),
+		SMTPHost:                     strings.TrimSpace(os.Getenv("SMTP_HOST")),
+		SMTPPort:                     smtpPort,
+		SMTPUsername:                 strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+		SMTPPassword:                 strings.TrimSpace(os.Getenv("SMTP_PASSWORD")),
+		SMTPUseSSL:                   smtpUseSSL,
 		DefaultLocale:                strings.ToLower(getEnv("DEFAULT_LOCALE", "fr")),
 		RabbitMQURL:                  strings.TrimSpace(os.Getenv("RABBITMQ_URL")),
 		RabbitMQTasksExchange:        getEnv("RABBITMQ_TASKS_EXCHANGE", "boilerplate.tasks"),
 		RabbitMQRealtimeExchange:     getEnv("RABBITMQ_REALTIME_EXCHANGE", "boilerplate.realtime"),
 		RabbitMQWorkerQueue:          getEnv("RABBITMQ_WORKER_QUEUE", "api.worker.default"),
 		RabbitMQWorkerConsumerTag:    getEnv("RABBITMQ_WORKER_CONSUMER_TAG", "api-worker"),
+		WorkerHTTPEnabled:            workerHTTPEnabled,
+		WorkerHTTPPort:               strings.TrimSpace(firstNonEmpty(os.Getenv("WORKER_HTTP_PORT"), os.Getenv("PORT"), "8080")),
+		WasenderAPIKey:               strings.TrimSpace(os.Getenv("WASENDER_API_KEY")),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -169,12 +206,25 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("MINIO_ENDPOINT is required when OBJECT_STORAGE_PROVIDER=minio")
 	}
 
-	if cfg.MailchimpTransactionalAPIKey == "" {
-		return Config{}, fmt.Errorf("MAILCHIMP_TRANSACTIONAL_API_KEY is required")
-	}
-
 	if cfg.MailFromEmail == "" {
 		return Config{}, fmt.Errorf("MAIL_FROM_EMAIL is required")
+	}
+
+	switch cfg.MailProvider {
+	case "mailchimp":
+		if cfg.MailchimpTransactionalAPIKey == "" {
+			return Config{}, fmt.Errorf("MAILCHIMP_TRANSACTIONAL_API_KEY is required when MAIL_PROVIDER=mailchimp")
+		}
+	case "brevo":
+		if cfg.BrevoAPIKey == "" {
+			return Config{}, fmt.Errorf("BREVO_API_KEY is required when MAIL_PROVIDER=brevo")
+		}
+	case "smtp":
+		if cfg.SMTPHost == "" {
+			return Config{}, fmt.Errorf("SMTP_HOST is required when MAIL_PROVIDER=smtp")
+		}
+	default:
+		return Config{}, fmt.Errorf("MAIL_PROVIDER must be one of: mailchimp, brevo, smtp")
 	}
 
 	if cfg.DefaultLocale != "fr" && cfg.DefaultLocale != "en" {

@@ -13,6 +13,7 @@ import type {
   ChangePasswordPayload,
   UpdateProfilePayload,
   UpdateSecurityPayload,
+  UpdateNotificationPrefsPayload,
   User,
 } from "@/types/user";
 
@@ -124,6 +125,13 @@ export const useSessionStore = defineStore("session", () => {
     return user;
   }
 
+  async function updateNotificationPrefs(payload: UpdateNotificationPrefsPayload) {
+    const user = await usersApi.updateNotificationPrefs(payload);
+    currentUser.value = user;
+    persistSession();
+    return user;
+  }
+
   async function changePassword(payload: ChangePasswordPayload) {
     await usersApi.changePassword(payload);
     if (currentUser.value) {
@@ -197,6 +205,7 @@ export const useSessionStore = defineStore("session", () => {
     refreshToken,
     updateCurrentProfile,
     updateCurrentProfilePhoto,
+    updateNotificationPrefs,
     updateSecurity,
     verifyOtp,
   };
