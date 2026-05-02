@@ -1,0 +1,144 @@
+# Artillery WebSocket Load Testing for Realtime Gateway
+#
+# Tests de charge pour les connexions WebSocket
+# 
+# Usage:
+#   npm install -g artillery
+#   artillery run websocket-load-test.yml
+
+config:
+  target: '{{ $processEnvironment.REALTIME_BASE_URL || "ws://localhost:8081" }}'
+  phases:
+    # Montée progressive
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up WS"
+    
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 100
+      name: "Ramp up WS connections"
+    
+    # Maintien des connexions actives
+    - duration: 180
+      arrivalRate: 100
+      name: "Sustained WS load"
+    
+    # Baisse progressive
+    - duration: 60
+      arrivalRate: 10
+      name: "Cool down WS"
+  
+  # Gestion des WebSockets
+  ws:
+    # Timeouts
+    connectTimeout: 5000
+    # Ping pour maintenir les connexions
+    pingInterval: 30000
+  
+  plugins:
+    ensure:
+      thresholds:
+        - ws.connections: 100
+        - ws.errors: 0.01
+
+scenarios:
+  # Scenario 1: Connexion WebSocket basique
+  - name: "Basic WebSocket Connection"
+    weight: 50
+    engine: ws
+    flow:
+      # Connect and subscribe
+      - function: "generateToken"
+      
+      - send:
+          url: "/rt/ws?access_token={{ token }}"
+      
+      - think: 2
+      
+      # Subscribe to channels
+      - send:
+          json:
+            type: "subscribe"
+            channels: ["notifications"]
+      
+      - think: 10
+      
+      # Ping pour maintenir la connexion
+      - function: "sendPing"
+      
+      - think: 10
+      
+      # Unsubscribe
+      - send:
+          json:
+            type: "unsubscribe"
+            channels: ["notifications"]
+      
+      - think: 5
+
+  # Scenario 2: Connexion avec multiple channels
+  - name: "Multi-Channel WebSocket"
+    weight: 30
+    engine: ws
+    flow:
+      - function: "generateToken"
+      
+      - send:
+          url: "/rt/ws?access_token={{ token }}"
+      
+      - think: 1
+      
+      # Subscribe to multiple channels
+      - send:
+          json:
+            type: "subscribe"
+            channels: ["notifications", "users", "system"]
+      
+      - think: 20
+      
+      # Simuler des changements de focus
+      - send:
+          json:
+            type: "unsubscribe"
+            channels: ["system"]
+      
+      - think: 10
+      
+      - send:
+          json:
+            type: "subscribe"
+            channels: ["messages"]
+      
+      - think: 10
+
+  # Scenario 3: Reconnexions fréquentes (simulation instabilité réseau)
+  - name: "Frequent Reconnections"
+    weight: 20
+    engine: ws
+    flow:
+      - function: "generateToken"
+      
+      # Connexion initiale
+      - send:
+          url: "/rt/ws?access_token={{ token }}"
+      
+      - send:
+          json:
+            type: "subscribe"
+            channels: ["notifications"]
+      
+      - think: 5
+      
+      # Reconnexion (déconnexion + reconnexion simulée)
+      - function: "reconnect"
+      
+      - send:
+          url: "/rt/ws?access_token={{ token }}"
+      
+      - send:
+          json:
+            type: "subscribe"
+            channels: ["notifications"]
+      
+      - think: 5

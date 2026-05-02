@@ -1,0 +1,17 @@
+{
+  "name": "api-load-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Load testing for API using Artillery",
+  "scripts": {
+    "install-artillery": "npm install -g artillery",
+    "smoke": "artillery run quick-smoke-test.yml",
+    "load": "artillery run artillery.config.yml",
+    "spike": "artillery run spike-test.yml",
+    "report": "artillery run artillery.config.yml --output report.json && artillery report report.json",
+    "with-env": "artillery run --environment production artillery.config.yml"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

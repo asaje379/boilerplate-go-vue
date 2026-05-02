@@ -7,4 +7,4 @@ export const REALTIME_RECONNECT_DELAY_MS = Number(
 )
 
 export const REALTIME_DEFAULT_TRANSPORT =
-  (import.meta.env.VITE_REALTIME_DEFAULT_TRANSPORT as 'sse' | 'ws' | undefined) || 'sse'
+  (import.meta.env.VITE_REALTIME_DEFAULT_TRANSPORT as 'sse' | 'ws' | undefined) || 'ws'

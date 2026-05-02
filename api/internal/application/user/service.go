@@ -9,6 +9,7 @@ import (
 	"time"
 
 	appcommon "api/internal/application/common"
+	authdomain "api/internal/domain/auth"
 	filedomain "api/internal/domain/file"
 	userdomain "api/internal/domain/user"
 	platformemail "api/internal/platform/email"
@@ -19,6 +20,7 @@ import (
 
 type Service struct {
 	users          userdomain.Repository
+	refreshTokens  authdomain.RefreshTokenRepository
 	files          filedomain.Repository
 	events         appcommon.EventPublisher
 	emailValidator platformemail.Validator
@@ -77,8 +79,8 @@ type UpdateNotificationPrefsInput struct {
 	WhatsAppPhone  string
 }
 
-func NewService(users userdomain.Repository, files filedomain.Repository, events appcommon.EventPublisher, emailValidator platformemail.Validator) Service {
-	return Service{users: users, files: files, events: events, emailValidator: emailValidator}
+func NewService(users userdomain.Repository, refreshTokens authdomain.RefreshTokenRepository, files filedomain.Repository, events appcommon.EventPublisher, emailValidator platformemail.Validator) Service {
+	return Service{users: users, refreshTokens: refreshTokens, files: files, events: events, emailValidator: emailValidator}
 }
 
 func normalizeMutableFields(name, email, whatsAppPhone string, preferredLocale userdomain.Locale) (string, string, string, userdomain.Locale, error) {
@@ -337,6 +339,11 @@ func (s Service) ChangePassword(ctx context.Context, input ChangePasswordInput) 
 	if err := s.users.UpdatePassword(ctx, account.ID, string(hash)); err != nil {
 		return err
 	}
+	if s.refreshTokens != nil {
+		if err := s.refreshTokens.RevokeByUserID(ctx, account.ID); err != nil {
+			return err
+		}
+	}
 
 	s.publish(ctx, appcommon.RealtimeEvent{
 		ID:             platformid.New(),
@@ -427,6 +434,11 @@ func (s Service) UpdateActiveStatus(ctx context.Context, actorRole userdomain.Ro
 
 	if err := s.users.UpdateIsActive(ctx, userID, isActive); err != nil {
 		return nil, err
+	}
+	if !isActive && s.refreshTokens != nil {
+		if err := s.refreshTokens.RevokeByUserID(ctx, userID); err != nil {
+			return nil, err
+		}
 	}
 	s.publish(ctx, appcommon.RealtimeEvent{
 		ID:             platformid.New(),

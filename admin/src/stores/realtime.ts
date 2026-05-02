@@ -180,7 +180,6 @@ export const useRealtimeStore = defineStore("realtime", () => {
 
   function openWebSocket(channels: string[]) {
     const params = new URLSearchParams();
-    params.set("access_token", session.accessToken || "");
     if (channels.length > 0) {
       params.set("channels", channels.join(","));
     }
@@ -188,7 +187,7 @@ export const useRealtimeStore = defineStore("realtime", () => {
     const httpUrl = buildRealtimeUrl("/rt/ws", params);
     const protocol = httpUrl.protocol === "https:" ? "wss:" : "ws:";
     const socketUrl = `${protocol}//${httpUrl.host}${httpUrl.pathname}${httpUrl.search}`;
-    const nextSocket = new WebSocket(socketUrl);
+    const nextSocket = new WebSocket(socketUrl, ["bearer", session.accessToken || ""]);
     socket = nextSocket;
 
     nextSocket.onopen = () => {

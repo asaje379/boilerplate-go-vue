@@ -1,6 +1,8 @@
 package router
 
 import (
+	"fmt"
+
 	appauth "realtime-gateway/internal/application/auth"
 	apprealtime "realtime-gateway/internal/application/realtime"
 	"realtime-gateway/internal/interfaces/http/handlers"
@@ -13,6 +15,9 @@ import (
 func New(authService appauth.Service, registry *apprealtime.Registry, cfg config.Config) *gin.Engine {
 	engine := gin.Default()
 	engine.SetTrustedProxies(nil)
+	if len(cfg.CORSAllowedOrigins) == 0 && gin.Mode() == gin.ReleaseMode {
+		panic(fmt.Errorf("CORS_ALLOWED_ORIGINS is required in release mode"))
+	}
 	corsConfig := cors.Config{
 		AllowOrigins:     cfg.CORSAllowedOrigins,
 		AllowMethods:     []string{"GET", "OPTIONS"},

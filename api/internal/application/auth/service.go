@@ -152,34 +152,46 @@ func (s Service) SetupStatus(ctx context.Context) (*SetupStatusResult, error) {
 }
 
 func (s Service) BootstrapFirstAdmin(ctx context.Context, input RegisterInput) (*AuthResult, error) {
-	adminCount, err := s.users.CountAdmins(ctx)
+	createdUser, err := s.buildRegisteredUser(input, userdomain.RoleAdmin)
 	if err != nil {
 		return nil, err
 	}
-	if adminCount > 0 {
+	created, err := s.users.CreateFirstAdminIfNone(ctx, createdUser)
+	if err != nil {
+		return nil, err
+	}
+	if !created {
 		return nil, fmt.Errorf("%w: initial setup already completed", appcommon.ErrConflict)
-	}
-
-	createdUser, err := s.Register(ctx, RegisterInput{
-		Name:            input.Name,
-		Email:           input.Email,
-		Password:        input.Password,
-		WhatsAppPhone:   input.WhatsAppPhone,
-		Role:            userdomain.RoleAdmin,
-		PreferredLocale: input.PreferredLocale,
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	return s.issueTokenPair(ctx, createdUser)
 }
 
 func (s Service) Register(ctx context.Context, input RegisterInput) (*userdomain.User, error) {
+	newUser, err := s.buildRegisteredUser(input, input.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	existing, err := s.users.GetByEmail(ctx, newUser.Email)
+	if err != nil && !errors.Is(err, appcommon.ErrNotFound) {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("%w: email already registered", appcommon.ErrConflict)
+	}
+
+	if err := s.users.Create(ctx, newUser); err != nil {
+		return nil, err
+	}
+	return newUser, nil
+}
+
+func (s Service) buildRegisteredUser(input RegisterInput, requestedRole userdomain.Role) (*userdomain.User, error) {
 	name := strings.TrimSpace(input.Name)
 	email := strings.TrimSpace(strings.ToLower(input.Email))
 	password := strings.TrimSpace(input.Password)
-	role := input.Role
+	role := requestedRole
 	preferredLocale := input.PreferredLocale.Normalize()
 	if role == "" {
 		role = userdomain.RoleUser
@@ -207,14 +219,6 @@ func (s Service) Register(ctx context.Context, input RegisterInput) (*userdomain
 		return nil, fmt.Errorf("%w: %s", appcommon.ErrValidation, err.Error())
 	}
 
-	existing, err := s.users.GetByEmail(ctx, email)
-	if err != nil && !errors.Is(err, appcommon.ErrNotFound) {
-		return nil, err
-	}
-	if existing != nil {
-		return nil, fmt.Errorf("%w: email already registered", appcommon.ErrConflict)
-	}
-
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -223,9 +227,6 @@ func (s Service) Register(ctx context.Context, input RegisterInput) (*userdomain
 	newUser := &userdomain.User{ID: platformid.New(), Name: name, Email: email, PasswordHash: string(hash), PreferredLocale: preferredLocale, Role: role}
 	newUser.WhatsAppPhone = strings.TrimSpace(input.WhatsAppPhone)
 	newUser.TwoFactorEnabled = false
-	if err := s.users.Create(ctx, newUser); err != nil {
-		return nil, err
-	}
 	return newUser, nil
 }
 
@@ -344,6 +345,9 @@ func (s Service) ResetPassword(ctx context.Context, input ResetPasswordInput) er
 	if err := s.users.UpdatePassword(ctx, account.ID, string(hash)); err != nil {
 		return err
 	}
+	if err := s.refreshTokens.RevokeByUserID(ctx, account.ID); err != nil {
+		return err
+	}
 	return s.otps.Consume(ctx, otp.ID)
 }
 
@@ -362,12 +366,18 @@ func (s Service) Refresh(ctx context.Context, input RefreshInput) (*AuthResult, 
 	if storedToken.IsRevoked() || time.Now().After(storedToken.ExpiresAt) {
 		return nil, appcommon.ErrUnauthorized
 	}
+	if claims.UserID != storedToken.UserID {
+		return nil, appcommon.ErrUnauthorized
+	}
 	account, err := s.users.GetByID(ctx, storedToken.UserID)
 	if err != nil {
 		if errors.Is(err, appcommon.ErrNotFound) {
 			return nil, appcommon.ErrUnauthorized
 		}
 		return nil, err
+	}
+	if !account.IsActive {
+		return nil, appcommon.ErrUnauthorized
 	}
 	if err := s.refreshTokens.RevokeByID(ctx, storedToken.ID); err != nil {
 		return nil, err
@@ -393,7 +403,21 @@ func (s Service) Logout(ctx context.Context, input LogoutInput) error {
 	return s.refreshTokens.RevokeByID(ctx, storedToken.ID)
 }
 
-func (s Service) ParseToken(token string) (*TokenClaims, error) { return s.parseToken(token, "access") }
+func (s Service) ParseToken(ctx context.Context, token string) (*TokenClaims, error) {
+	claims, err := s.parseToken(token, "access")
+	if err != nil {
+		return nil, err
+	}
+
+	account, err := s.users.GetByID(ctx, claims.UserID)
+	if err != nil || !account.IsActive {
+		return nil, appcommon.ErrUnauthorized
+	}
+	claims.Role = account.Role
+	claims.Email = account.Email
+
+	return claims, nil
+}
 
 func (s Service) parseToken(token string, expectedType string) (*TokenClaims, error) {
 	parsed, err := jwt.ParseWithClaims(token, &TokenClaims{}, func(_ *jwt.Token) (any, error) { return s.jwtSecret, nil }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))

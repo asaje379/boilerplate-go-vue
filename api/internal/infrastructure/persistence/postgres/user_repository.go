@@ -37,6 +37,47 @@ func (r UserRepository) Create(ctx context.Context, user *userdomain.User) error
 	return nil
 }
 
+func (r UserRepository) CreateFirstAdminIfNone(ctx context.Context, user *userdomain.User) (bool, error) {
+	if user.ID == "" {
+		user.ID = platformid.New()
+	}
+	user.Role = userdomain.RoleAdmin
+	user.IsActive = true
+	user.TwoFactorEnabled = false
+	user.NotifyEmail = true
+	user.NotifyInApp = true
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(2026050101)).Error; err != nil {
+			return err
+		}
+
+		var count int64
+		if err := tx.Model(&UserModel{}).Where("role = ?", userdomain.RoleAdmin).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return appcommon.ErrConflict
+		}
+
+		model := fromDomainUser(user)
+		if err := tx.Create(model).Error; err != nil {
+			return err
+		}
+
+		*user = *model.toDomain()
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, appcommon.ErrConflict) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (r UserRepository) CountAdmins(ctx context.Context) (int64, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).Model(&UserModel{}).Where("role = ?", userdomain.RoleAdmin).Count(&count).Error; err != nil {

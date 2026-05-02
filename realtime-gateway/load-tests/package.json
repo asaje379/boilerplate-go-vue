@@ -1,0 +1,17 @@
+{
+  "name": "realtime-load-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Load testing for Realtime Gateway using Artillery",
+  "scripts": {
+    "install-artillery": "npm install -g artillery",
+    "sse": "artillery run sse-load-test.yml",
+    "websocket": "artillery run websocket-load-test.yml",
+    "sse-report": "artillery run sse-load-test.yml --output sse-report.json && artillery report sse-report.json",
+    "ws-report": "artillery run websocket-load-test.yml --output ws-report.json && artillery report ws-report.json",
+    "combined": "npm run sse && npm run websocket"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

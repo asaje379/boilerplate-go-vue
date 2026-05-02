@@ -34,7 +34,7 @@ func NewService(jwtSecret string) Service {
 func (s Service) Authenticate(token string) (Principal, error) {
 	parsed, err := jwt.ParseWithClaims(strings.TrimSpace(token), &Claims{}, func(_ *jwt.Token) (any, error) {
 		return s.jwtSecret, nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		return Principal{}, ErrUnauthorized
 	}

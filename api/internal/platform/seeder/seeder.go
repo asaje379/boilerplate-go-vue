@@ -59,7 +59,7 @@ func (s Seeder) ensureUser(ctx context.Context, name, email, password string, ro
 	if err == nil {
 		return nil
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if !errors.Is(err, appcommon.ErrNotFound) && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 

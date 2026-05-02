@@ -1,4 +1,4 @@
-import { useStorage } from '@vueuse/core'
+import { useSessionStorage } from '@vueuse/core'
 import { computed } from 'vue'
 import type { User } from '@/types/user'
 
@@ -9,7 +9,7 @@ export interface StoredSessionState {
   refreshToken: string | null
 }
 
-const storage = useStorage<StoredSessionState>('admin-session', {
+const storage = useSessionStorage<StoredSessionState>('admin-session', {
   accessToken: null,
   currentUser: null,
   expiresAt: null,
