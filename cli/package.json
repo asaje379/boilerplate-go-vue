@@ -42,7 +42,7 @@
 		"starter"
 	],
 	"author": "Asaje",
-	"license": "UNLICENSED",
+	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/asaje379/boilerplate-go-vue.git",
