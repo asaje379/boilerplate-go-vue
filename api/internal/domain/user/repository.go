@@ -8,6 +8,7 @@ import (
 
 type Repository interface {
 	Create(ctx context.Context, user *User) error
+	CreateFirstAdminIfNone(ctx context.Context, user *User) (bool, error)
 	CountAdmins(ctx context.Context) (int64, error)
 	GetByID(ctx context.Context, id string) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)

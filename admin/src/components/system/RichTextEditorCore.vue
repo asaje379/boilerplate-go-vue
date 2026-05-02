@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type { HTMLAttributes } from 'vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import Image from '@tiptap/extension-image'
-import Placeholder from '@tiptap/extension-placeholder'
-import StarterKit from '@tiptap/starter-kit'
-import { EditorContent, useEditor } from '@tiptap/vue-3'
+import type { HTMLAttributes } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import Image from "@tiptap/extension-image";
+import { Markdown } from "@tiptap/markdown";
+import Placeholder from "@tiptap/extension-placeholder";
+import StarterKit from "@tiptap/starter-kit";
+import { EditorContent, useEditor } from "@tiptap/vue-3";
 import {
   Bold,
+  FileCode,
   Heading1,
   Heading2,
   ImagePlus,
@@ -16,40 +18,44 @@ import {
   Quote,
   Redo2,
   Undo2,
-} from 'lucide-vue-next'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
+} from "lucide-vue-next";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 const props = withDefaults(
   defineProps<{
-    class?: HTMLAttributes['class']
-    disabled?: boolean
-    minHeightClass?: string
-    modelValue?: string
-    placeholder?: string
+    class?: HTMLAttributes["class"];
+    disabled?: boolean;
+    format?: "html" | "markdown";
+    minHeightClass?: string;
+    modelValue?: string;
+    placeholder?: string;
   }>(),
   {
-    minHeightClass: 'min-h-56',
-    modelValue: '',
-    placeholder: 'Start writing...',
+    format: "html",
+    minHeightClass: "min-h-56",
+    modelValue: "",
+    placeholder: "Start writing...",
   },
-)
+);
 
 const emit = defineEmits<{
-  'update:modelValue': [payload: string]
-}>()
+  "update:modelValue": [payload: string];
+}>();
 
-const imageUrl = ref('')
-const showImageInput = ref(false)
+const imageUrl = ref("");
+const showImageInput = ref(false);
+const isMarkdownMode = ref(props.format === "markdown");
 
 const editor = useEditor({
   content: props.modelValue,
+  contentType: props.format,
   editable: !props.disabled,
   editorProps: {
     attributes: {
       class: cn(
-        'prose prose-sm dark:prose-invert max-w-none px-4 py-3 outline-none',
+        "prose prose-sm dark:prose-invert max-w-none px-4 py-3 outline-none",
         props.minHeightClass,
       ),
     },
@@ -63,101 +69,123 @@ const editor = useEditor({
       inline: false,
       allowBase64: true,
     }),
+    Markdown,
   ],
   onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.getHTML())
+    const content = isMarkdownMode.value
+      ? editor.getMarkdown()
+      : editor.getHTML();
+    emit("update:modelValue", content);
   },
-})
+});
 
 const toolbar = computed(() => [
   {
     action: () => editor.value?.chain().focus().toggleBold().run(),
-    active: () => editor.value?.isActive('bold'),
+    active: () => editor.value?.isActive("bold"),
     icon: Bold,
-    label: 'Bold',
+    label: "Bold",
   },
   {
     action: () => editor.value?.chain().focus().toggleItalic().run(),
-    active: () => editor.value?.isActive('italic'),
+    active: () => editor.value?.isActive("italic"),
     icon: Italic,
-    label: 'Italic',
+    label: "Italic",
   },
   {
     action: () => editor.value?.chain().focus().toggleHeading({ level: 1 }).run(),
-    active: () => editor.value?.isActive('heading', { level: 1 }),
+    active: () => editor.value?.isActive("heading", { level: 1 }),
     icon: Heading1,
-    label: 'Heading 1',
+    label: "Heading 1",
   },
   {
     action: () => editor.value?.chain().focus().toggleHeading({ level: 2 }).run(),
-    active: () => editor.value?.isActive('heading', { level: 2 }),
+    active: () => editor.value?.isActive("heading", { level: 2 }),
     icon: Heading2,
-    label: 'Heading 2',
+    label: "Heading 2",
   },
   {
     action: () => editor.value?.chain().focus().toggleBulletList().run(),
-    active: () => editor.value?.isActive('bulletList'),
+    active: () => editor.value?.isActive("bulletList"),
     icon: List,
-    label: 'Bullet list',
+    label: "Bullet list",
   },
   {
     action: () => editor.value?.chain().focus().toggleOrderedList().run(),
-    active: () => editor.value?.isActive('orderedList'),
+    active: () => editor.value?.isActive("orderedList"),
     icon: ListOrdered,
-    label: 'Ordered list',
+    label: "Ordered list",
   },
   {
     action: () => editor.value?.chain().focus().toggleBlockquote().run(),
-    active: () => editor.value?.isActive('blockquote'),
+    active: () => editor.value?.isActive("blockquote"),
     icon: Quote,
-    label: 'Quote',
+    label: "Quote",
   },
-])
+]);
 
 watch(
   () => props.modelValue,
   (value) => {
     if (!editor.value) {
-      return
+      return;
     }
 
-    const currentValue = editor.value.getHTML()
+    const currentValue = isMarkdownMode.value ? editor.value.getMarkdown() : editor.value.getHTML();
 
     if (value !== currentValue) {
-      editor.value.commands.setContent(value || '', { emitUpdate: false })
+      editor.value.commands.setContent(value || "", {
+        emitUpdate: false,
+        contentType: isMarkdownMode.value ? "markdown" : "html",
+      });
     }
   },
-)
+);
 
 watch(
   () => props.disabled,
   (value) => {
-    editor.value?.setEditable(!value)
+    editor.value?.setEditable(!value);
   },
-)
+);
 
 onBeforeUnmount(() => {
-  editor.value?.destroy()
-})
+  editor.value?.destroy();
+});
 
 function toggleImageInput() {
-  showImageInput.value = !showImageInput.value
+  showImageInput.value = !showImageInput.value;
 
   if (!showImageInput.value) {
-    imageUrl.value = ''
+    imageUrl.value = "";
   }
 }
 
 function insertImage() {
-  const src = imageUrl.value.trim()
+  const src = imageUrl.value.trim();
 
   if (!src || !editor.value) {
-    return
+    return;
   }
 
-  editor.value.chain().focus().setImage({ src }).run()
-  imageUrl.value = ''
-  showImageInput.value = false
+  editor.value.chain().focus().setImage({ src }).run();
+  imageUrl.value = "";
+  showImageInput.value = false;
+}
+
+function toggleFormat() {
+  if (!editor.value) return;
+
+  isMarkdownMode.value = !isMarkdownMode.value;
+
+  // Convertir le contenu au nouveau format
+  if (isMarkdownMode.value) {
+    // Passer en mode markdown
+    emit("update:modelValue", editor.value.getMarkdown());
+  } else {
+    // Passer en mode HTML
+    emit("update:modelValue", editor.value.getHTML());
+  }
 }
 </script>
 
@@ -191,6 +219,10 @@ function insertImage() {
       </Button>
 
       <div class="ml-auto flex gap-2">
+        <Button type="button" size="sm" variant="ghost" :disabled="disabled" @click="toggleFormat">
+          <FileCode class="size-4 mr-1" />
+          <span>{{ isMarkdownMode ? "Markdown" : "HTML" }}</span>
+        </Button>
         <Button
           type="button"
           size="icon-sm"

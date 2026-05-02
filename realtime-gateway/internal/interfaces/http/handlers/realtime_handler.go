@@ -32,6 +32,7 @@ func NewRealtimeHandler(auth appauth.Service, registry *apprealtime.Registry, cf
 		registry: registry,
 		config:   cfg,
 		upgrader: websocket.Upgrader{
+			Subprotocols: []string{"bearer"},
 			CheckOrigin: func(r *http.Request) bool {
 				if len(allowedOrigins) == 0 {
 					return true
@@ -175,6 +176,9 @@ func (h RealtimeHandler) authenticate(c *gin.Context) (appauth.Principal, bool) 
 			token = strings.TrimSpace(parts[1])
 		}
 	}
+	if token == "" {
+		token = bearerSubprotocolToken(c.GetHeader("Sec-WebSocket-Protocol"))
+	}
 
 	principal, err := h.auth.Authenticate(token)
 	if err != nil {
@@ -183,6 +187,16 @@ func (h RealtimeHandler) authenticate(c *gin.Context) (appauth.Principal, bool) 
 	}
 
 	return principal, true
+}
+
+func bearerSubprotocolToken(header string) string {
+	parts := strings.Split(header, ",")
+	for index, part := range parts {
+		if strings.EqualFold(strings.TrimSpace(part), "bearer") && index+1 < len(parts) {
+			return strings.TrimSpace(parts[index+1])
+		}
+	}
+	return ""
 }
 
 func parseChannels(raw string) map[string]struct{} {

@@ -1,0 +1,169 @@
+# Artillery Load Testing Configuration for API
+# 
+# Usage:
+#   npm install -g artillery
+#   artillery run artillery.config.yml
+#   
+#   # Avec variables d'environnement
+#   API_BASE_URL=http://localhost:8080 JWT_TOKEN=xxx artillery run artillery.config.yml
+
+config:
+  target: '{{ $processEnvironment.API_BASE_URL || "http://localhost:8080" }}'
+  phases:
+    # Phase 1: Warm up - montée progressive
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    
+    # Phase 2: Load test normal
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 50
+      name: "Ramp up load"
+    
+    # Phase 3: Peak load
+    - duration: 60
+      arrivalRate: 50
+      name: "Peak load"
+    
+    # Phase 4: Recovery
+    - duration: 60
+      arrivalRate: 10
+      name: "Recovery"
+  
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  
+  # Plugins pour les rapports
+  plugins:
+    ensure: {}
+    metrics-by-endpoint: {}
+    http-telemetry: {}
+  
+  # Seuils de performance
+  ensure:
+    thresholds:
+      - http.response_time.p95: 500
+      - http.response_time.p99: 1000
+      - http.error_rate: 0.01
+  
+  # Variables globales
+  variables:
+    apiPrefix: "/api/v1"
+
+scenarios:
+  # Scenario 1: Health check (lightweight, pour baseline)
+  - name: "Health Check"
+    weight: 20
+    flow:
+      - get:
+          url: "{{ apiPrefix }}/health"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+  # Scenario 2: Login flow
+  - name: "Authentication"
+    weight: 30
+    flow:
+      - post:
+          url: "{{ apiPrefix }}/auth/login"
+          json:
+            email: "admin@test.com"
+            password: "Password123!"
+          capture:
+            - json: "$.data.accessToken"
+              as: "accessToken"
+          expect:
+            - statusCode: 200
+      
+      - think: 1
+      
+      # Utiliser le token pour une requête authentifiée
+      - get:
+          url: "{{ apiPrefix }}/users/me"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          expect:
+            - statusCode: 200
+
+  # Scenario 3: Users list (admin only)
+  - name: "Users Management"
+    weight: 25
+    flow:
+      # Login
+      - post:
+          url: "{{ apiPrefix }}/auth/login"
+          json:
+            email: "admin@test.com"
+            password: "Password123!"
+          capture:
+            - json: "$.data.accessToken"
+              as: "accessToken"
+      
+      # Liste des utilisateurs
+      - get:
+          url: "{{ apiPrefix }}/users?page=1&limit=20"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          expect:
+            - statusCode: 200
+      
+      - think: 2
+      
+      # Détails d'un utilisateur
+      - get:
+          url: "{{ apiPrefix }}/users/me"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+          expect:
+            - statusCode: 200
+
+  # Scenario 4: Setup status (public)
+  - name: "Setup Status"
+    weight: 15
+    flow:
+      - get:
+          url: "{{ apiPrefix }}/auth/setup-status"
+          expect:
+            - statusCode: 200
+
+  # Scenario 5: Mixed operations (simulation réelle)
+  - name: "Mixed Operations"
+    weight: 10
+    flow:
+      # Login
+      - post:
+          url: "{{ apiPrefix }}/auth/login"
+          json:
+            email: "admin@test.com"
+            password: "Password123!"
+          capture:
+            - json: "$.data.accessToken"
+              as: "accessToken"
+      
+      - think: 1
+      
+      # Profil
+      - get:
+          url: "{{ apiPrefix }}/users/me"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+      
+      - think: 2
+      
+      # Notifications
+      - get:
+          url: "{{ apiPrefix }}/notifications/unread-count"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+      
+      - think: 1
+      
+      # Refresh token
+      - post:
+          url: "{{ apiPrefix }}/auth/refresh"
+          json:
+            refreshToken: "dummy-token"
+          # Peut retourner 401, c'est acceptable pour le test

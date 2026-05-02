@@ -1,0 +1,81 @@
+# Artillery Load Testing for Realtime Gateway (SSE)
+#
+# Tests de charge pour les connexions Server-Sent Events
+# Usage: artillery run sse-load-test.yml
+
+config:
+  target: '{{ $processEnvironment.REALTIME_BASE_URL || "http://localhost:8081" }}'
+  phases:
+    # Montée progressive des connexions SSE
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up SSE"
+    
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 50
+      name: "Ramp up SSE connections"
+    
+    # Maintien des connexions
+    - duration: 120
+      arrivalRate: 50
+      name: "Sustained SSE load"
+    
+    # Déconnexion progressive
+    - duration: 60
+      arrivalRate: 10
+      name: "Cool down"
+  
+  plugins:
+    ensure:
+      thresholds:
+        - http.response_time.p95: 200
+        - http.error_rate: 0.01
+    metrics-by-endpoint: {}
+
+scenarios:
+  # Scenario 1: Connexion SSE simple (sans auth)
+  - name: "SSE Connection"
+    weight: 40
+    flow:
+      # Établir la connexion SSE
+      - get:
+          url: "/rt/sse?channels=notifications"
+          headers:
+            Accept: "text/event-stream"
+          # Garder la connexion ouverte pendant 10 secondes
+          # Note: Artillery ferme la connexion après réception
+      
+      - think: 10
+
+  # Scenario 2: Connexion SSE avec authentification
+  - name: "Authenticated SSE Connection"
+    weight: 35
+    flow:
+      # Simuler une connexion authentifiée (token dans l'URL)
+      - get:
+          url: "/rt/sse?access_token=dummy-jwt-token&channels=notifications,users"
+          headers:
+            Accept: "text/event-stream"
+      
+      - think: 15
+
+  # Scenario 3: Health check (léger)
+  - name: "Health Check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+
+  # Scenario 4: Connexion multiple canaux
+  - name: "Multi-Channel SSE"
+    weight: 5
+    flow:
+      - get:
+          url: "/rt/sse?access_token=dummy-jwt-token&channels=notifications,users,system"
+          headers:
+            Accept: "text/event-stream"
+      
+      - think: 20

@@ -1,6 +1,6 @@
 {
 	"name": "create-asaje-go-vue",
-	"version": "0.3.7",
+	"version": "0.3.8",
 	"description": "CLI to scaffold, configure, and run the Asaje Go + Vue boilerplate",
 	"type": "module",
 	"bin": {
@@ -20,11 +20,13 @@
 		"diff-railway-config": "node ./bin/asaje.js diff-railway-config .. --compare-environment production",
 		"deploy-railway": "node ./bin/asaje.js deploy-railway .. --yes",
 		"publish:check": "node ./bin/asaje.js publish .",
-		"check": "node --check ./bin/create-asaje-go-vue.js && node --check ./bin/asaje.js",
+		"test": "node --test",
+		"check": "node --check ./bin/create-asaje-go-vue.js && node --check ./bin/asaje.js && node --check ./src/cli/args.js && node --check ./src/cli/env.js && node --check ./src/cli/invocation.js && node --check ./src/cli/paths.js && node --check ./src/cli/process.js && node --check ./src/cli/prompts.js && node --check ./src/cli/runner.js && node --check ./src/cli/strings.js && node --check ./src/create/answers.js && node --check ./src/create/questions.js && node --check ./src/project/docs.js && node --check ./src/project/files.js && node --check ./src/project/makefile.js && node --check ./src/project/sync.js && node --check ./src/railway/client.js && node --check ./src/railway/manifest.js && node --check ./src/railway/services.js && node --check ./src/railway/snapshot.js && node --check ./src/railway/variables.js && node --check ./src/start/answers.js && node --check ./src/start/runtime.js && npm run test",
 		"pack:dry-run": "npm pack --dry-run"
 	},
 	"files": [
 		"bin",
+		"src",
 		"README.md",
 		"package.json"
 	],
@@ -40,7 +42,7 @@
 		"starter"
 	],
 	"author": "Asaje",
-	"license": "UNLICENSED",
+	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/asaje379/boilerplate-go-vue.git",

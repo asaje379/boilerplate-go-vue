@@ -1,0 +1,29 @@
+# Quick Smoke Test
+# Test rapide pour vérifier que l'API répond correctement
+# Usage: artillery run quick-smoke-test.yml
+
+config:
+  target: '{{ $processEnvironment.API_BASE_URL || "http://localhost:8080" }}'
+  phases:
+    - duration: 10
+      arrivalRate: 1
+      name: "Smoke test"
+  
+  plugins:
+    ensure:
+      thresholds:
+        - http.response_time.max: 1000
+        - http.error_rate: 0
+
+scenarios:
+  - name: "Basic health check"
+    flow:
+      - get:
+          url: "/api/v1/health"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/v1/auth/setup-status"
+          expect:
+            - statusCode: 200

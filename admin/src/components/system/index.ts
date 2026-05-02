@@ -19,6 +19,7 @@ export { default as FormSwitch } from "./FormSwitch.vue";
 export { default as PhoneInput } from "./PhoneInput.vue";
 export { default as ResourceFormDialog } from "./ResourceFormDialog.vue";
 export { default as RichTextEditor } from "./RichTextEditor.vue";
+export { default as RichTextView } from "./RichTextView.vue";
 export { default as SearchInput } from "./SearchInput.vue";
 export type {
   DataTableLoadParams,

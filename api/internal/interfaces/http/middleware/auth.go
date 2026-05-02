@@ -33,7 +33,7 @@ func Authenticate(authService appauth.Service) gin.HandlerFunc {
 			return
 		}
 
-		claims, err := authService.ParseToken(parts[1])
+		claims, err := authService.ParseToken(c.Request.Context(), parts[1])
 		if err != nil {
 			abortWithError(c, http.StatusUnauthorized, appcommon.ErrUnauthorized.Error())
 			return

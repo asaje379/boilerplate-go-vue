@@ -1,0 +1,49 @@
+# Spike Test
+# Simule un pic soudain de trafic pour tester la résilience
+# Usage: artillery run spike-test.yml
+
+config:
+  target: '{{ $processEnvironment.API_BASE_URL || "http://localhost:8080" }}'
+  phases:
+    # Baseline normal
+    - duration: 30
+      arrivalRate: 10
+      name: "Baseline"
+    
+    # Spike soudain
+    - duration: 30
+      arrivalRate: 10
+      rampTo: 200
+      name: "Spike up"
+    
+    # Maintien du pic
+    - duration: 60
+      arrivalRate: 200
+      name: "Sustained spike"
+    
+    # Retour à la normale
+    - duration: 30
+      arrivalRate: 10
+      name: "Recovery"
+  
+  plugins:
+    ensure:
+      thresholds:
+        - http.response_time.p95: 2000
+        - http.error_rate: 0.05
+
+scenarios:
+  - name: "Health under spike"
+    weight: 50
+    flow:
+      - get:
+          url: "/api/v1/health"
+  
+  - name: "Login under spike"
+    weight: 50
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            email: "admin@test.com"
+            password: "Password123!"
